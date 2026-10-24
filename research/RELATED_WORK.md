@@ -26,3 +26,7 @@ We do **not** claim a published leaderboard score, a novel deep architecture, or
 - Yambda-50M flat listen records have user/item/time/listen fields; this file does **not** have artist or genre fields.
 - Sampling only certain users preserves their histories, but changes estimated population popularity and item overlap. Document the seed and selected count.
 - This repo uses a different protocol from the official Yambda Global Temporal Split; numbers are not directly comparable.
+
+7. **Rekko Challenge, Tinkoff/T-Bank team (2019)**. A competition solution combining item signals, collaborative scores and a second-stage gradient boosted ranker; useful prior art for two-stage retrieval/ranking and stronger ablations. Article with source-code references: https://habr.com/ru/companies/tbank/articles/454818/ . This is *not* a solution to the 2026 selection assignment.
+
+8. **RecSys Challenge 2024, FeatureSalad**. Public example of CatBoost/LightGBM ranking and stacking; substantial prior art for ranker ensembles. https://github.com/remaplab/recsys-challenge-2024-ekstrabladet . Different task and evaluation; scores are not portable.
