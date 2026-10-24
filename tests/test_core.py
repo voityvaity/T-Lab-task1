@@ -64,3 +64,25 @@ def test_late_rows_do_not_change_past_aggregates():
     from tlab.core import FeatureSpec
     f = add_features(event, cand, cutoff=10, specs=(FeatureSpec("pair", "count", 1),), manual_extras=False)
     assert f["pair_count_1d"].iloc[0] == 2.0
+
+
+def test_end_to_end_synthetic_smoke(tmp_path):
+    """Small deterministic run: generates full report without accessing real Yambda."""
+    from tlab.experiment import run
+
+    events = synthetic_events(6, days=80, seed=21)
+    result = run(
+        events,
+        dataset_mode="synthetic",
+        output=tmp_path,
+        seed=21,
+        iterations=5,
+        snapshots=1,
+        candidate_limit=24,
+        threads=2,
+    )
+    assert all(name in result["models"] for name in ("popularity", "manual", "auto", "manual_plus_auto"))
+    assert (tmp_path / "metrics.json").exists()
+    assert (tmp_path / "feature_selection.json").exists()
+    assert (tmp_path / "REPORT.md").exists()
+    assert 0 <= result["models"]["manual"]["test"]["ndcg@10"] <= 1
