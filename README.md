@@ -80,3 +80,14 @@ The Yambda dataset includes static `artist_item_mapping.parquet` and `album_item
 Without `--metadata-dir`, previous listening-only experiments still work. **Do not compare scores from different configurations** as if they used identical features.
 
 These features use extra memory: history is joined to static relations for each cutoff. On a large sample, measure peak RSS and consider a pre-aggregated or streaming implementation.
+
+
+## 2026-10-24 audit amendments
+
+- The default positive is now `played_ratio_pct > 50` in accordance with Yambda's Listen+ convention; this **changes the objective** compared to any prior >=30% results.
+- Test ranking scores are now computed only after all validation-based feature selection has finished.
+- Fixed-window baseline uses 1/7/30/60-day history, consistent with the minimum history check.
+- The runtime report now breaks feature computation down into retrieval, manual, generated and relation-feature stages.
+- Optional artist/album mappings increase the baseline to **27 manual features** and the automatic bank to **29 generated features**.
+- **Important:** This repository does not yet contain completed empirical results on real Yambda, confidence intervals, a tuned strong collaborative-filtering baseline, or a scalable benchmark of the full 10,000-user dataset. Do not submit synthetic results as research evidence.
+- See [research/AUDIT_2026-10-24.md](research/AUDIT_2026-10-24.md) for verified fixes and remaining work.
