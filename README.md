@@ -41,9 +41,9 @@ The demo uses **synthetic** generated interactions, solely to check execution. I
 For genuine research, fetch the public dataset (large download):
 
 ```bash
-python -m tlab.data download --output data
-python -m tlab.experiment --data data/flat/50m/listens.parquet --users 100 --iterations 200 --output results/yambda-100
-python -m tlab.experiment --data data/flat/50m/listens.parquet --users 1000 --iterations 350 --output results/yambda-1000
+python -m tlab.data download --output data --with-metadata
+python -m tlab.experiment --data data/flat/50m/listens.parquet --users 100 --iterations 200 --metadata-dir data --output results/yambda-100
+python -m tlab.experiment --data data/flat/50m/listens.parquet --users 1000 --iterations 350 --metadata-dir data --output results/yambda-1000
 ```
 
 With sufficient compute, repeat at 10,000 users (no sampling): `--users 0`. **Do not** extrapolate small-sample metrics to the full population.
@@ -71,3 +71,12 @@ See [research/RELATED_WORK.md](research/RELATED_WORK.md). Sources are cited with
 Fixed user sampling seed and event ordering, bounded dependency ranges in `pyproject.toml`, version metadata in `run_config.json`, and snapshot cutoffs in `metrics.json`. Results require an explicit run on real data. `data/` and `results/` are gitignored.
 
 **GitHub Actions:** `.github/workflows/manual-tests.yml` uses only `workflow_dispatch`. It never runs on pushes or pull requests, to avoid spending CI minutes automatically. Click **Actions → Manual tests → Run workflow** when you want to execute it.
+
+
+## Optional artist / album relations
+
+The Yambda dataset includes static `artist_item_mapping.parquet` and `album_item_mapping.parquet`, with `(artist_id, item_id)` and `(album_id, item_id)` columns. With `--metadata-dir data` the baseline adds **4 indirect relation features** (7/30-day counts across user–artist and user–album), while the generator adds **8** (1/3/14/60-day counts across those relations). Mapping is potentially one-to-many and all distinct artist/item links are retained; counts are summed over mapped entities. Aggregation always uses history strictly earlier than the snapshot cutoff.
+
+Without `--metadata-dir`, previous listening-only experiments still work. **Do not compare scores from different configurations** as if they used identical features.
+
+These features use extra memory: history is joined to static relations for each cutoff. On a large sample, measure peak RSS and consider a pre-aggregated or streaming implementation.
