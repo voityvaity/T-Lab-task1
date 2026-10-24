@@ -4,6 +4,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
+from .data import is_positive_listen
+
 
 def ranking_metrics(
     pairs: pd.DataFrame,
@@ -46,6 +48,6 @@ def ranking_metrics(
 def future_positive_counts(events: pd.DataFrame, cutoff: int, bins_per_day: int) -> pd.Series:
     positives = events.loc[
         (events["timestamp"] >= cutoff) & (events["timestamp"] < cutoff + bins_per_day)
-        & (events["played_ratio_pct"] >= 30), ["uid", "item_id"]
+        & is_positive_listen(events["played_ratio_pct"]), ["uid", "item_id"]
     ].drop_duplicates()
     return positives.groupby("uid").size()
