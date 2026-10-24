@@ -1,0 +1,54 @@
+name: Manual Yambda research (can consume substantial Actions minutes)
+
+on:
+  workflow_dispatch:
+    inputs:
+      users:
+        description: "Number of complete user histories (100 recommended initially)"
+        required: true
+        default: "100"
+        type: choice
+        options: ["100", "1000"]
+      iterations:
+        description: "CatBoost iterations per model"
+        required: true
+        default: "120"
+        type: choice
+        options: ["120", "250"]
+
+permissions:
+  contents: read
+
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install
+        run: python -m pip install -e ".[dev]"
+      - name: Prevent accidental oversized experiments
+        env:
+          USERS: ${{ inputs.users }}
+        run: |
+          test "$USERS" = "100" || test "$USERS" = "1000"
+      - name: Fetch only Yambda-50M listens
+        run: python -m tlab.data download --output data
+      - name: Run point-in-time experiment
+        env:
+          USERS: ${{ inputs.users }}
+          ITERATIONS: ${{ inputs.iterations }}
+        run: |
+          python -m tlab.experiment --data data/flat/50m/listens.parquet --users "$USERS" --iterations "$ITERATIONS" --threads 4 --output results/yambda
+      - name: Upload measured report (never raw data)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: yambda-research-report
+          path: results/yambda
+          if-no-files-found: ignore
+          retention-days: 30
