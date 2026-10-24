@@ -158,22 +158,22 @@ def run(
     trials = []
     selected_cols = None
     selected_model = None
-    selected_elapsed = None
+    trial_training_seconds = 0.0
     best_score = -1.0
     for size in sizes:
         columns = ordered[:size]
         model, fit_secs = train_model(train, columns, iterations=iterations, seed=seed, threads=threads)
+        trial_training_seconds += fit_secs
         score = _evaluate(model, valid, columns, val_counts)["ndcg@10"]
-        trials.append({"features": size, "validation_ndcg@10": score})
+        trials.append({"features": size, "validation_ndcg@10": score, "fit_seconds": fit_secs})
         if score > best_score:
             best_score = score
             selected_cols = columns
             selected_model = model
-            selected_elapsed = fit_secs
     assert selected_cols is not None and selected_model is not None
     models["auto"] = {
         "validation": _evaluate(selected_model, valid, selected_cols, val_counts),
-        "test": None, "train_seconds": pilot_seconds + sum(x.get("fit_secs", 0) for x in []) + (selected_elapsed or 0.0),
+        "test": None, "train_seconds": pilot_seconds + trial_training_seconds,
         "features": selected_cols,
     }
     hybrid_columns = list(dict.fromkeys(MANUAL_COLUMNS + selected_cols))
