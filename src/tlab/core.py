@@ -7,7 +7,7 @@ from typing import Literal
 import numpy as np
 import pandas as pd
 
-from .data import BINS_PER_DAY
+from .data import BINS_PER_DAY, is_positive_listen
 
 Scope = Literal["user", "item", "pair"]
 _KEYS: dict[Scope, list[str]] = {"user": ["uid"], "item": ["item_id"], "pair": ["uid", "item_id"]}
@@ -203,7 +203,7 @@ def make_snapshot(
     future = events.loc[
         (events["timestamp"] >= cutoff)
         & (events["timestamp"] < cutoff + BINS_PER_DAY)
-        & (events["played_ratio_pct"] >= 30),
+        & is_positive_listen(events["played_ratio_pct"]),
         ["uid", "item_id"],
     ].drop_duplicates()
     labels = future.assign(label=1)
