@@ -14,6 +14,10 @@ import pandas as pd
 from .core import AUTO_COLUMNS, MANUAL_COLUMNS, global_cutoffs, make_snapshot
 from .data import BINS_PER_DAY, load_yambda, synthetic_events
 from .metrics import future_positive_counts, ranking_metrics
+from .relations import (
+    AUTO_RELATION_COLUMNS, MANUAL_RELATION_COLUMNS,
+    add_relation_features, load_mappings,
+)
 
 
 def train_model(frame: pd.DataFrame, columns: list[str], *, iterations: int, seed: int, threads: int):
@@ -102,28 +106,37 @@ def run(
     dataset_mode: str, output: Path,
     seed: int = 42, iterations: int = 200,
     snapshots: int = 4, candidate_limit: int = 200, threads: int = 4,
+    mappings: dict[str, pd.DataFrame] | None = None,
 ) -> dict:
     if events.empty:
         raise ValueError("Events are empty")
     users = np.sort(events["uid"].unique())
     train_cuts, valid_cut, test_cut = global_cutoffs(events, snapshots=snapshots)
+    manual_columns = MANUAL_COLUMNS + (MANUAL_RELATION_COLUMNS if mappings is not None else [])
+    auto_columns = AUTO_COLUMNS + (AUTO_RELATION_COLUMNS if mappings is not None else [])
+
+    def snapshot(cutoff: int):
+        frame, info = make_snapshot(events, cutoff, users, candidate_limit=candidate_limit)
+        if mappings is not None:
+            frame = add_relation_features(frame, events, cutoff, mappings)
+        return frame, info
 
     details = {}
     train_parts = []
     feature_secs = 0.0
     for i, cut in enumerate(train_cuts):
         start = time.perf_counter()
-        frame, detail = make_snapshot(events, cut, users, candidate_limit=candidate_limit)
+        frame, detail = snapshot(cut)
         feature_secs += time.perf_counter() - start
         train_parts.append(frame)
         details[f"train_{i}"] = detail
     train = pd.concat(train_parts, ignore_index=True)
     del train_parts
     start = time.perf_counter()
-    valid, details["validation"] = make_snapshot(events, valid_cut, users, candidate_limit)
+    valid, details["validation"] = snapshot(valid_cut)
     feature_secs += time.perf_counter() - start
     start = time.perf_counter()
-    test, details["test"] = make_snapshot(events, test_cut, users, candidate_limit)
+    test, details["test"] = snapshot(test_cut)
     feature_secs += time.perf_counter() - start
 
     val_counts = future_positive_counts(events, valid_cut, BINS_PER_DAY)
@@ -140,16 +153,16 @@ def run(
             "features": ["item_count_7d"],
         }
     }
-    manual, elapsed = train_model(train, MANUAL_COLUMNS, iterations=iterations, seed=seed, threads=threads)
+    manual, elapsed = train_model(train, manual_columns, iterations=iterations, seed=seed, threads=threads)
     models["manual"] = {
-        "validation": _evaluate(manual, valid, MANUAL_COLUMNS, val_counts),
-        "test": None, "train_seconds": elapsed, "features": MANUAL_COLUMNS,
+        "validation": _evaluate(manual, valid, manual_columns, val_counts),
+        "test": None, "train_seconds": elapsed, "features": manual_columns,
     }
 
     # Step 1: rank the generated features by train-only CatBoost importance.
-    pilot, pilot_seconds = train_model(train, AUTO_COLUMNS, iterations=iterations, seed=seed, threads=threads)
+    pilot, pilot_seconds = train_model(train, auto_columns, iterations=iterations, seed=seed, threads=threads)
     importances = sorted(
-        zip(AUTO_COLUMNS, pilot.get_feature_importance(), strict=True),
+        zip(auto_columns, pilot.get_feature_importance(), strict=True),
         key=lambda pair: (-float(pair[1]), pair[0]),
     )
     ordered = [x[0] for x in importances]
@@ -176,7 +189,7 @@ def run(
         "test": None, "train_seconds": pilot_seconds + trial_training_seconds,
         "features": selected_cols,
     }
-    hybrid_columns = list(dict.fromkeys(MANUAL_COLUMNS + selected_cols))
+    hybrid_columns = list(dict.fromkeys(manual_columns + selected_cols))
     hybrid, hybrid_secs = train_model(
         train, hybrid_columns, iterations=iterations, seed=seed, threads=threads
     )
@@ -187,7 +200,7 @@ def run(
 
     # All selection is now complete; access held-out test metrics only here.
     models["popularity"]["test"] = ranking_metrics(test, pop_score_test, positive_counts=test_counts)
-    models["manual"]["test"] = _evaluate(manual, test, MANUAL_COLUMNS, test_counts)
+    models["manual"]["test"] = _evaluate(manual, test, manual_columns, test_counts)
     models["auto"]["test"] = _evaluate(selected_model, test, selected_cols, test_counts)
     models["manual_plus_auto"]["test"] = _evaluate(hybrid, test, hybrid_columns, test_counts)
 
@@ -199,6 +212,7 @@ def run(
     }
     result = {
         "dataset_mode": dataset_mode,
+        "using_artist_album_metadata": mappings is not None,
         "seed": seed,
         "users": len(users),
         "cutoffs": {"train": train_cuts, "validation": valid_cut, "test": test_cut},
@@ -209,7 +223,8 @@ def run(
     config = {
         "dataset_mode": dataset_mode, "seed": seed, "users": len(users),
         "iterations": iterations, "snapshots": snapshots, "candidate_limit": candidate_limit,
-        "threads": threads, "python": platform.python_version(),
+        "threads": threads, "using_artist_album_metadata": mappings is not None,
+        "python": platform.python_version(),
         "pandas": pd.__version__, "numpy": np.__version__, "catboost": catboost.__version__,
     }
     output.mkdir(parents=True, exist_ok=True)
@@ -231,6 +246,8 @@ def main() -> None:
     p.add_argument("--iterations", type=int, default=200)
     p.add_argument("--threads", type=int, default=4)
     p.add_argument("--output", type=Path, default=Path("results/run"))
+    p.add_argument("--metadata-dir", type=Path, default=None,
+                   help="Optional directory containing artist_item_mapping.parquet and album_item_mapping.parquet")
     args = p.parse_args()
     if args.demo == (args.data is not None):
         p.error("Supply exactly one of --data PATH or --demo")
@@ -239,8 +256,9 @@ def main() -> None:
     events = synthetic_events(n_users=max(4, args.users), seed=args.seed) if args.demo else load_yambda(
         args.data, users=args.users, seed=args.seed
     )
+    mappings = load_mappings(args.metadata_dir) if args.metadata_dir is not None else None
     results = run(
-        events, dataset_mode="synthetic" if args.demo else "yambda-50m",
+        events, mappings=mappings, dataset_mode="synthetic" if args.demo else "yambda-50m",
         output=args.output, seed=args.seed, snapshots=args.snapshots,
         candidate_limit=args.candidates, iterations=args.iterations, threads=args.threads,
     )
