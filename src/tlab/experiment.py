@@ -91,12 +91,21 @@ def _report(metrics: dict, selector: dict) -> str:
         "",
         "## Limitations and next actions",
         "",
-        "- Candidate generation is popularity + repeats, not exhaustive retrieval.",
+        "- Candidate generation uses popularity, repeats and historical transitions; it is not exhaustive retrieval.",
         "- No impression logs: results cannot be interpreted as calibrated CTR.",
         "- Compare to stronger candidate retrieval, try alternative seeds and cohort sizes.",
         "- Observe both feature creation and model training costs.",
         "",
         f"Total feature computation seconds: {metrics['feature_seconds']:.1f}",
+        "",
+        "## Computation costs by stage",
+        "",
+        "| Stage | Aggregate seconds across snapshots |",
+        "|---|---:|",
+        *[
+            f"| {name} | {elapsed:.3f} |"
+            for name, elapsed in metrics["feature_cost_seconds"].items()
+        ],
     ]
     return "\n".join(lines) + "\n"
 
@@ -118,7 +127,11 @@ def run(
     def snapshot(cutoff: int):
         frame, info = make_snapshot(events, cutoff, users, candidate_limit=candidate_limit)
         if mappings is not None:
+            start_relations = time.perf_counter()
             frame = add_relation_features(frame, events, cutoff, mappings)
+            info["timings_seconds"]["relation_features"] = round(
+                time.perf_counter() - start_relations, 6
+            )
         return frame, info
 
     details = {}
@@ -218,6 +231,10 @@ def run(
         "cutoffs": {"train": train_cuts, "validation": valid_cut, "test": test_cut},
         "snapshot_details": details,
         "feature_seconds": round(feature_secs, 3),
+        "feature_cost_seconds": {
+            name: round(sum(x["timings_seconds"][name] for x in details.values()), 4)
+            for name in ("candidate_retrieval", "manual_features", "auto_features", "relation_features")
+        },
         "models": models,
     }
     config = {
