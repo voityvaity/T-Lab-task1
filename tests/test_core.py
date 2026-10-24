@@ -86,3 +86,43 @@ def test_end_to_end_synthetic_smoke(tmp_path):
     assert (tmp_path / "feature_selection.json").exists()
     assert (tmp_path / "REPORT.md").exists()
     assert 0 <= result["models"]["manual"]["test"]["ndcg@10"] <= 1
+
+
+def test_yambda_listen_plus_threshold_is_strict():
+    """The dataset authors define Listen+ as more than half of a track."""
+    from tlab.data import is_positive_listen
+    assert list(is_positive_listen(pd.Series([0, 30, 50, 51, 100, 190]))) == [
+        False, False, False, True, True, True
+    ]
+
+
+def test_label_ignores_events_outside_horizon_and_50_percent():
+    event = pd.DataFrame(
+        [
+            (7, 5, 1, 80),
+            (7, 6, 2, 80),
+            (7, 5, BINS_PER_DAY, 50),
+            (7, 6, BINS_PER_DAY + 1, 51),
+            (7, 5, 2 * BINS_PER_DAY, 100),
+        ],
+        columns=["uid", "item_id", "timestamp", "played_ratio_pct"],
+    )
+    frame, info = make_snapshot(event, BINS_PER_DAY, np.array([7]), candidate_limit=10)
+    assert dict(zip(frame.item_id, frame.label)) == {5: 0, 6: 1}
+    assert info["future_positive_pairs"] == 1
+    assert info["retrieved_positive_pairs"] == 1
+
+
+def test_snapshot_is_invariant_to_any_observations_after_target_window():
+    events = synthetic_events(5, days=80)
+    cutoff = 70 * BINS_PER_DAY
+    user_ids = np.sort(events.uid.unique())
+    frame, details = make_snapshot(events, cutoff, user_ids, candidate_limit=24)
+    new_future = pd.DataFrame(
+        [(int(user_ids[0]), 99999, cutoff + BINS_PER_DAY + 17, 150)],
+        columns=["uid", "item_id", "timestamp", "played_ratio_pct"],
+    )
+    augmented = pd.concat([events, new_future], ignore_index=True)
+    frame2, details2 = make_snapshot(augmented, cutoff, user_ids, candidate_limit=24)
+    pd.testing.assert_frame_equal(frame, frame2)
+    assert details == details2
