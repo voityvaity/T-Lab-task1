@@ -170,7 +170,9 @@ def test_synthetic_run_with_relations(tmp_path):
     )
     assert result["using_artist_album_metadata"] is True
     assert "user_artist_count_30d" in result["models"]["manual"]["features"]
-    assert "user_album_count_14d" in result["models"]["auto"]["features"] or (
-        tmp_path / "feature_selection.json"
-    ).exists()
+    import json
+    selection = json.loads((tmp_path / "feature_selection.json").read_text(encoding="utf-8"))
+    assert "user_album_count_14d" in {
+        feature["name"] for feature in selection["importance_train_only"]
+    }
     assert 0 <= result["models"]["auto"]["test"]["recall@10"] <= 1
