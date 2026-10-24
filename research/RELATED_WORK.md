@@ -30,3 +30,14 @@ We do **not** claim a published leaderboard score, a novel deep architecture, or
 7. **Rekko Challenge, Tinkoff/T-Bank team (2019)**. A competition solution combining item signals, collaborative scores and a second-stage gradient boosted ranker; useful prior art for two-stage retrieval/ranking and stronger ablations. Article with source-code references: https://habr.com/ru/companies/tbank/articles/454818/ . This is *not* a solution to the 2026 selection assignment.
 
 8. **RecSys Challenge 2024, FeatureSalad**. Public example of CatBoost/LightGBM ranking and stacking; substantial prior art for ranker ensembles. https://github.com/remaplab/recsys-challenge-2024-ekstrabladet . Different task and evaluation; scores are not portable.
+
+
+## Additional primary-source verification (2026-10-24)
+
+9. **Yambda original schema and Listen+ definition:** Official Yambda dataset explicitly provides static `artist_item_mapping.parquet` (`artist_id,item_id`) and `album_item_mapping.parquet` (`album_id,item_id`) at its repository root, in addition to listening events. "Listen+" means **strictly more than 50% listened**, not 30%. We corrected the threshold and implemented optional point-in-time user–artist/user–album features. Source: https://huggingface.co/datasets/yandex/yambda/blob/main/README.md and the primary paper https://arxiv.org/abs/2505.22238 .
+
+10. **RecSys Challenge 2025, 4th place:** *Blending Sequential Embeddings, Graphs, and Engineered Features.* Hundreds of manual feature aggregations, several time windows, and exponentially weighted history were already used competitively. Our simple exponential decay is **prior art, not an original invention**. The contribution to test is whether restricted, validation-selected automatically generated temporal features can compete with strong manual counterparts at measured cost. https://doi.org/10.1145/3758126.3758131
+
+11. **RecSys Challenge 2025, Triple-Feature Transformer:** Prior successful use of 1/7/30/60/90-day windows and decay for user behaviour. https://doi.org/10.1145/3758126.3758138
+
+12. **Apple Fortress (July 2026):** Temporal prediction instability can justify measuring feature stability across different time intervals and pruning volatile features. This is a *possible next experiment*, not something already implemented. https://machinelearning.apple.com/research/fortress-stabilizing-search-recommendations
