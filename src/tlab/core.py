@@ -58,12 +58,18 @@ def past(events: pd.DataFrame, cutoff: int) -> pd.DataFrame:
 def retrieve_candidates(
     events: pd.DataFrame, cutoff: int, all_users: np.ndarray, candidate_limit: int = 200
 ) -> pd.DataFrame:
-    """Deterministic future-blind popularity + recent-repeat candidate pool."""
-    if candidate_limit < 2:
-        raise ValueError("candidate_limit must be >= 2")
+    """Future-blind mix of popularity, repeats and 14-day within-session transitions.
+
+    Transitions are computed solely from history: a source track and its next
+    played track for the same user within one hour. This retrieval mechanism
+    is deliberately shared unchanged across all ranking models.
+    """
+    if candidate_limit < 3:
+        raise ValueError("candidate_limit must be >= 3")
     history = past(events, cutoff)
-    pop_budget = candidate_limit // 2
-    recent_budget = candidate_limit - pop_budget
+    pop_budget = candidate_limit // 3
+    recent_budget = candidate_limit // 3
+    transition_budget = candidate_limit - pop_budget - recent_budget
     global_items = (
         history.groupby("item_id").size().sort_values(ascending=False, kind="mergesort")
         .index[:pop_budget].tolist()
@@ -71,14 +77,49 @@ def retrieve_candidates(
     recent = (
         history.sort_values(["uid", "timestamp", "item_id"], ascending=[True, False, True], kind="mergesort")
         .drop_duplicates(["uid", "item_id"])
-        .groupby("uid", sort=False).head(recent_budget)
+        .groupby("uid", sort=False).head(max(recent_budget, 3))
         .groupby("uid")["item_id"].apply(list).to_dict()
     )
+
+    # One-hour temporal transitions, counted only in the past 14 days.
+    tail = history.loc[
+        history["timestamp"] >= cutoff - 14 * BINS_PER_DAY,
+        ["uid", "item_id", "timestamp"],
+    ].sort_values(["uid", "timestamp", "item_id"], kind="mergesort").copy()
+    tail["next_item"] = tail.groupby("uid", sort=False)["item_id"].shift(-1)
+    tail["next_time"] = tail.groupby("uid", sort=False)["timestamp"].shift(-1)
+    transitions = tail.loc[
+        tail["next_item"].notna()
+        & (tail["next_item"] != tail["item_id"])
+        & ((tail["next_time"] - tail["timestamp"]) > 0)
+        & ((tail["next_time"] - tail["timestamp"]) <= 720),
+        ["item_id", "next_item"],
+    ]
+    top_transition = (
+        transitions.groupby(["item_id", "next_item"], sort=False).size()
+        .rename("count").reset_index()
+        .sort_values(["item_id", "count", "next_item"], ascending=[True, False, True], kind="mergesort")
+        .groupby("item_id", sort=False).head(10)
+        .groupby("item_id")["next_item"].apply(list).to_dict()
+    )
+
     rows = []
     for uid in np.sort(all_users):
-        items = dict.fromkeys(global_items + recent.get(uid, []))
-        rows.extend((int(uid), int(item)) for item in list(items)[:candidate_limit])
+        user_recent = recent.get(uid, [])
+        suggestions = []
+        for seed in user_recent[:3]:
+            suggestions.extend(top_transition.get(seed, []))
+            if len(suggestions) >= transition_budget * 3:
+                break
+        # Insertion order matters: reserve budget per retrieval source.
+        ordered = list(dict.fromkeys(
+            global_items[:pop_budget]
+            + user_recent[:recent_budget]
+            + suggestions[:transition_budget]
+        ))
+        rows.extend((int(uid), int(item)) for item in ordered[:candidate_limit])
     return pd.DataFrame(rows, columns=["uid", "item_id"])
+
 
 
 def add_features(
@@ -96,8 +137,8 @@ def add_features(
             selection = history.loc[history["timestamp"] >= lo]
             series = selection.groupby(keys, sort=False).size().rename(spec.name)
         else:
-            # A 60-day tail bounds runtime; any discarded contribution is < exp(-60/tau).
-            selection = history.loc[history["timestamp"] >= cutoff - 60 * BINS_PER_DAY, keys + ["timestamp"]].copy()
+            # A 180-day tail bounds memory; even at tau=21d older per-event weights are < 0.0002.
+            selection = history.loc[history["timestamp"] >= cutoff - 180 * BINS_PER_DAY, keys + ["timestamp"]].copy()
             ages = (cutoff - selection["timestamp"].to_numpy(dtype=np.float64)) / BINS_PER_DAY
             selection["weight"] = np.exp(-ages / spec.days)
             series = selection.groupby(keys, sort=False)["weight"].sum().rename(spec.name)
