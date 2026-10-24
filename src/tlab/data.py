@@ -11,6 +11,12 @@ import numpy as np
 import pandas as pd
 
 BINS_PER_DAY = 24 * 60 * 60 // 5
+POSITIVE_PLAYED_RATIO_PCT = 50
+
+
+def is_positive_listen(played_ratio_pct: pd.Series) -> pd.Series:
+    """Official Yambda Listen+ convention: strictly more than 50% listened."""
+    return played_ratio_pct > POSITIVE_PLAYED_RATIO_PCT
 
 
 def load_yambda(path: str | Path, users: int = 100, seed: int = 42) -> pd.DataFrame:
@@ -53,7 +59,7 @@ def synthetic_events(n_users: int = 20, days: int = 80, seed: int = 42) -> pd.Da
             for _ in range(8):
                 item = int(rng.choice(favorites)) if rng.random() < 0.75 else int(rng.integers(50))
                 t = day * BINS_PER_DAY + int(rng.integers(0, BINS_PER_DAY))
-                ratio = int(rng.integers(30, 101)) if rng.random() < 0.82 else 5
+                ratio = int(rng.integers(51, 101)) if rng.random() < 0.82 else 5
                 rows.append((uid, item, t, ratio))
     return pd.DataFrame(rows, columns=["uid", "item_id", "timestamp", "played_ratio_pct"]).sort_values(
         ["uid", "timestamp", "item_id"], kind="mergesort"
