@@ -37,13 +37,13 @@ jobs:
         run: |
           test "$USERS" = "100" || test "$USERS" = "1000"
       - name: Fetch only Yambda-50M listens
-        run: python -m tlab.data download --output data
+        run: python -m tlab.data download --output data --with-metadata
       - name: Run point-in-time experiment
         env:
           USERS: ${{ inputs.users }}
           ITERATIONS: ${{ inputs.iterations }}
         run: |
-          python -m tlab.experiment --data data/flat/50m/listens.parquet --users "$USERS" --iterations "$ITERATIONS" --threads 4 --output results/yambda
+          python -m tlab.experiment --data data/flat/50m/listens.parquet --users "$USERS" --iterations "$ITERATIONS" --threads 4 --metadata-dir data --output results/yambda
       - name: Upload measured report (never raw data)
         if: always()
         uses: actions/upload-artifact@v4
