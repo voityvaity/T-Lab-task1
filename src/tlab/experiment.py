@@ -49,7 +49,7 @@ def _report(metrics: dict, selector: dict) -> str:
         f"- Sampled users: {metrics['users']}",
         f"- Seed: {metrics['seed']}",
         f"- Cutoffs (Yambda 5-second bins): {metrics['cutoffs']}",
-        "- Positive: listened >=30% of track in one day after the cutoff.",
+        "- Positive: strictly >50% played in one day after the cutoff (Yambda Listen+).",
         "- Unobserved candidates are not proven dislikes or impressions.",
         "",
         "## Candidate coverage",
@@ -135,7 +135,7 @@ def run(
     models = {
         "popularity": {
             "validation": ranking_metrics(valid, pop_score_val, positive_counts=val_counts),
-            "test": ranking_metrics(test, pop_score_test, positive_counts=test_counts),
+            "test": None,
             "train_seconds": 0.0,
             "features": ["item_count_7d"],
         }
@@ -185,7 +185,8 @@ def run(
         "test": None, "train_seconds": hybrid_secs, "features": hybrid_columns,
     }
 
-    # Only after all selection do we unlock held-out test evaluation.
+    # All selection is now complete; access held-out test metrics only here.
+    models["popularity"]["test"] = ranking_metrics(test, pop_score_test, positive_counts=test_counts)
     models["manual"]["test"] = _evaluate(manual, test, MANUAL_COLUMNS, test_counts)
     models["auto"]["test"] = _evaluate(selected_model, test, selected_cols, test_counts)
     models["manual_plus_auto"]["test"] = _evaluate(hybrid, test, hybrid_columns, test_counts)
