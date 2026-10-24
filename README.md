@@ -10,10 +10,10 @@ Research prototype for the T-Bank ML selection task (October 2026).
 
 - **Dataset:** [Yandex Yambda-50M](https://huggingface.co/datasets/yandex/yambda), flat `listens.parquet`. Its event `timestamp` is expressed in **5-second bins**, not Unix seconds. No artist/genre metadata are assumed.
 - **Task:** recommend tracks at a global cutoff time; positive means a qualifying listen (`played_ratio_pct >= 30`) occurs in the **next day**. A missing listen is *unobserved*, not a confirmed negative.
-- **Candidate generation:** fixed, deterministic union of popular historical tracks and user's recently listened tracks, derived only from data earlier than each cutoff. This is intentionally a relatively simple retrieval baseline; candidate coverage is explicitly measured.
+- **Candidate generation:** fixed, deterministic union of popular historical tracks, user's recently listened tracks and historical one-hour transitions (counted only in the past 14 days), derived only from data earlier than each cutoff. This is intentionally a relatively simple retrieval baseline; candidate coverage is explicitly measured.
 - **Hand-made features:** activity/popularity and repeated user–item interaction counts in 7/30-day windows, user–item recency, plus a user–item-popularity-stratum affinity.
 - **Auto features:** programmatic cross-product of `{user,item,user-item} × {1,3,14,60-day counts or 2,7,21-day exponential decays}`. Rank candidates by CatBoost training-only feature importance; choose the number of retained features on validation, not test.
-- **Comparisons:** historical popularity, hand-engineered CatBoost, automatically selected features CatBoost, and hand-engineered + automatically selected features CatBoost.
+- **Comparisons:** historical popularity, hand-engineered CatBoost, automatically selected features CatBoost, and hand-engineered + automatically selected features CatBoost. All share the exact same temporal candidate pool.
 - **Evaluation:** global cutoff with disjoint one-day label periods, same candidates across models at each cutoff, NDCG@10/Recall@10 over users with future positives (denominator counts **all** positive tracks, including unretrieved ones), candidate coverage, CPU training times and feature computation times.
 - **Time safety:** every history aggregate is computed from events with `timestamp < cutoff`. Validation determines feature count/model selection. Test is only scored once after that selection.
 
@@ -55,7 +55,7 @@ Each experiment writes `metrics.json`, `feature_selection.json`, `run_config.jso
 - [x] Research references documented
 - [x] Point-in-time features, disjoint future labels, shared candidate pool
 - [x] Train-only importance and validation-only selection
-- [x] Synthetic regression tests for future leakage and metric denominators
+- [x] Synthetic regression tests for future leakage, metric denominators and end-to-end execution (defined; run status must be verified)
 - [ ] Reproduce on real 100-user Yambda cohort
 - [ ] Reproduce on real 1,000-user cohort
 - [ ] Run full 10,000-user benchmark if hardware permits
@@ -68,4 +68,4 @@ See [research/RELATED_WORK.md](research/RELATED_WORK.md). Sources are cited with
 
 ## Notes on reproducibility
 
-Fixed user sampling seed and event ordering, pinned minimum dependencies in `pyproject.toml`, version metadata in `run_config.json`, and snapshot cutoffs in `metrics.json`. Results require an explicit run on real data. `data/` and `results/` are gitignored.
+Fixed user sampling seed and event ordering, bounded dependency ranges in `pyproject.toml`, version metadata in `run_config.json`, and snapshot cutoffs in `metrics.json`. Results require an explicit run on real data. `data/` and `results/` are gitignored.
