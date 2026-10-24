@@ -27,7 +27,7 @@ class FeatureSpec:
 MANUAL_SPECS = tuple(
     FeatureSpec(scope, "count", days)
     for scope in ("user", "item", "pair")
-    for days in (1, 7, 30, 90)
+    for days in (1, 7, 30, 60)
 )
 AUTO_SPECS = tuple(
     [FeatureSpec(scope, "count", days) for scope in ("user", "item", "pair") for days in (1, 3, 14, 60)]
