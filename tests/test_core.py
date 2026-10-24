@@ -126,3 +126,51 @@ def test_snapshot_is_invariant_to_any_observations_after_target_window():
     frame2, details2 = make_snapshot(augmented, cutoff, user_ids, candidate_limit=24)
     pd.testing.assert_frame_equal(frame, frame2)
     assert details == details2
+
+
+def test_relations_count_all_artists_without_future_leakage():
+    from tlab.relations import add_relation_features
+    cutoff = 10 * BINS_PER_DAY
+    mapping = {
+        "artist": pd.DataFrame(
+            [(10, 7), (20, 8), (5, 7), (5, 8), (6, 9), (5, 7)],
+            columns=["item_id", "artist_id"],
+        ),
+        "album": pd.DataFrame(
+            [(10, 3), (20, 4), (5, 3), (6, 5)],
+            columns=["item_id", "album_id"],
+        ),
+    }
+    events = pd.DataFrame(
+        [(1, 10, cutoff - 1, 90), (1, 20, cutoff - 2, 99),
+         (1, 10, cutoff + 1, 100)],
+        columns=["uid", "item_id", "timestamp", "played_ratio_pct"],
+    )
+    base = pd.DataFrame([(1, 5), (1, 6), (2, 5)],
+                        columns=["uid", "item_id"])
+    before = add_relation_features(base, events, cutoff, mapping)
+    assert before["user_artist_count_7d"].tolist() == [2.0, 0.0, 0.0]
+    assert before["user_album_count_7d"].tolist() == [1.0, 0.0, 0.0]
+    past_only = events.loc[events.timestamp < cutoff]
+    after = add_relation_features(base, past_only, cutoff, mapping)
+    pd.testing.assert_frame_equal(before, after)
+
+
+def test_synthetic_run_with_relations(tmp_path):
+    from tlab.experiment import run
+    events = synthetic_events(6, days=80, seed=21)
+    mappings = {
+        "artist": pd.DataFrame({"item_id": np.arange(50), "artist_id": np.arange(50) % 5}),
+        "album": pd.DataFrame({"item_id": np.arange(50), "album_id": np.arange(50) // 5}),
+    }
+    result = run(
+        events, dataset_mode="synthetic", output=tmp_path, seed=21,
+        iterations=5, snapshots=1, candidate_limit=24, threads=2,
+        mappings=mappings,
+    )
+    assert result["using_artist_album_metadata"] is True
+    assert "user_artist_count_30d" in result["models"]["manual"]["features"]
+    assert "user_album_count_14d" in result["models"]["auto"]["features"] or (
+        tmp_path / "feature_selection.json"
+    ).exists()
+    assert 0 <= result["models"]["auto"]["test"]["recall@10"] <= 1
