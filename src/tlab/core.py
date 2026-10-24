@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from time import perf_counter
 from typing import Literal
 
 import numpy as np
@@ -196,9 +197,15 @@ def add_features(
 def make_snapshot(
     events: pd.DataFrame, cutoff: int, all_users: np.ndarray, candidate_limit: int = 200
 ) -> tuple[pd.DataFrame, dict[str, int]]:
+    start = perf_counter()
     cand = retrieve_candidates(events, cutoff, all_users, candidate_limit=candidate_limit)
+    retrieval_time = perf_counter() - start
+    start = perf_counter()
     manual = add_features(events, cand, cutoff, MANUAL_SPECS, manual_extras=True)
+    manual_time = perf_counter() - start
+    start = perf_counter()
     auto = add_features(events, cand, cutoff, AUTO_SPECS, manual_extras=False)
+    auto_time = perf_counter() - start
     feature_frame = pd.concat([manual, auto[AUTO_COLUMNS]], axis=1)
     future = events.loc[
         (events["timestamp"] >= cutoff)
@@ -215,4 +222,10 @@ def make_snapshot(
         "future_positive_pairs": len(future),
         "retrieved_positive_pairs": int(feature_frame["label"].sum()),
         "active_users": int(future["uid"].nunique()),
+        "timings_seconds": {
+            "candidate_retrieval": round(retrieval_time, 6),
+            "manual_features": round(manual_time, 6),
+            "auto_features": round(auto_time, 6),
+            "relation_features": 0.0,
+        },
     }
