@@ -10,7 +10,7 @@ Can automatic generation and validation-based selection of time-aware aggregate 
 
 - Yambda-50M flat listens file only; the original source provides five-second discretized timestamps and listened percentages.
 - Fix random seed and sample complete histories of 100 users for smoke, 1,000 for primary, and optionally all 10,000 for scaling.
-- No filter that removes earlier history for sampled users. Only the positive target definition requires played_ratio_pct > 50; all prior listening events may contribute to history features.
+- No filter that removes earlier history for sampled users. The positive target definition follows the original Yambda Listen+ convention (played_ratio_pct > 50); all prior listening events may contribute to history features.
 - Distinct future user–item pairs in each one-day horizon are positives. Unobserved candidates are not observed dislikes or exposed negatives.
 
 ## Temporal evaluation
@@ -63,3 +63,18 @@ After collecting the first valid run, potentially compare count-only versus deca
 ## Source and provenance
 
 This protocol is inspired by Featuretools Deep Feature Synthesis, the Yambda benchmark, RecSys 2025 Time to Split, and published two-stage recommender approaches. Full primary-source links: [RELATED_WORK.md](RELATED_WORK.md).
+
+
+## Relation-feature audit amendment, 2026-10-24
+
+The original baseline omitted Yambda's static track–artist and track–album lookup tables. They exist and are available separately. The implementation now supports optional `--metadata-dir data`:
+
+- Manual additional columns: 7/30-day user–artist and user–album listen counts (4).
+- Auto additional candidates: 1/3/14/60-day user–artist and user–album listen counts (8).
+- Items with multiple artists retain all distinct relation pairs. Users' aggregate artist affinity is summed across the mapped artists of a candidate item; document that this may reward large collaborations.
+- Those relations are static; **aggregate interaction histories are still restricted to timestamp < cutoff**.
+- The optional metadata mode must be turned on or off consistently for all competing models in one run.
+
+**Newly discovered limitation:** Feature generation repeatedly joins event histories against relation tables at every cutoff. This may use substantial peak memory and must be profiled before claiming scalable performance. Also, 27 manual signals are stronger than 23, but still not equivalent to a top industrial ranking system with collaborative retrieval/latent factor features.
+
+A proper research result still requires measured full-dataset or large-cohort NDCG and recall, computation costs, and uncertainty estimates.
