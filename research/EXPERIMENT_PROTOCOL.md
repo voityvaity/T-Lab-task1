@@ -10,7 +10,7 @@ Can automatic generation and validation-based selection of time-aware aggregate 
 
 - Yambda-50M flat listens file only; the original source provides five-second discretized timestamps and listened percentages.
 - Fix random seed and sample complete histories of 100 users for smoke, 1,000 for primary, and optionally all 10,000 for scaling.
-- No filter that removes earlier history for sampled users. Only the positive target definition requires played_ratio_pct >= 30; all prior listening events may contribute to history features.
+- No filter that removes earlier history for sampled users. Only the positive target definition requires played_ratio_pct > 50; all prior listening events may contribute to history features.
 - Distinct future user–item pairs in each one-day horizon are positives. Unobserved candidates are not observed dislikes or exposed negatives.
 
 ## Temporal evaluation
