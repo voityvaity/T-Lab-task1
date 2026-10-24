@@ -27,13 +27,19 @@ class FeatureSpec:
 MANUAL_SPECS = tuple(
     FeatureSpec(scope, "count", days)
     for scope in ("user", "item", "pair")
-    for days in (7, 30)
+    for days in (1, 7, 30, 90)
 )
 AUTO_SPECS = tuple(
     [FeatureSpec(scope, "count", days) for scope in ("user", "item", "pair") for days in (1, 3, 14, 60)]
     + [FeatureSpec(scope, "decay", days) for scope in ("user", "item", "pair") for days in (2, 7, 21)]
 )
-MANUAL_COLUMNS = [spec.name for spec in MANUAL_SPECS] + ["pair_recency_days", "user_popband_30"]
+MANUAL_COLUMNS = [spec.name for spec in MANUAL_SPECS] + [
+    "user_recency_days", "item_recency_days", "pair_recency_days",
+    "user_unique_items_30",
+    "user_mean_played_30", "item_mean_played_30", "pair_mean_played_30",
+    "user_trend_7_over_30", "item_trend_7_over_30", "pair_trend_7_over_30",
+    "user_popband_30",
+]
 AUTO_COLUMNS = [spec.name for spec in AUTO_SPECS]
 
 
@@ -146,16 +152,36 @@ def add_features(
         out[spec.name] = out[spec.name].fillna(0.0).astype("float32")
 
     if manual_extras:
-        last = history.groupby(["uid", "item_id"], sort=False)["timestamp"].max()
-        last.name = "_last"
-        out = out.join(last, on=["uid", "item_id"])
-        out["pair_recency_days"] = (
-            (cutoff - out["_last"]) / BINS_PER_DAY
-        ).fillna(9999.0).astype("float32")
-        out = out.drop(columns=["_last"])
+        for scope in ("user", "item", "pair"):
+            keys = _KEYS[scope]
+            last = history.groupby(keys, sort=False)["timestamp"].max().rename("_last")
+            out = out.join(last, on=keys)
+            out[f"{scope}_recency_days"] = (
+                (cutoff - out["_last"]) / BINS_PER_DAY
+            ).fillna(9999.0).astype("float32")
+            out = out.drop(columns=["_last"])
+
+        recent = history.loc[
+            history["timestamp"] >= cutoff - 30 * BINS_PER_DAY,
+            ["uid", "item_id", "played_ratio_pct"],
+        ].copy()
+        unique = recent.groupby("uid")["item_id"].nunique().rename("user_unique_items_30")
+        out = out.join(unique, on="uid")
+        out["user_unique_items_30"] = out["user_unique_items_30"].fillna(0).astype("float32")
+
+        for scope in ("user", "item", "pair"):
+            keys = _KEYS[scope]
+            name = f"{scope}_mean_played_30"
+            avg = recent.groupby(keys)["played_ratio_pct"].mean().rename(name)
+            out = out.join(avg, on=keys)
+            out[name] = out[name].fillna(0.0).astype("float32")
+            # Compare recent activity to a longer-term reference rate.
+            out[f"{scope}_trend_7_over_30"] = (
+                out[f"{scope}_count_7d"] /
+                (out[f"{scope}_count_30d"] + 1.0)
+            ).astype("float32")
 
         # Indirect user/item link: preference for *past popularity band* of the candidate.
-        recent = history.loc[history["timestamp"] >= cutoff - 30 * BINS_PER_DAY, ["uid", "item_id"]].copy()
         pop = recent.groupby("item_id").size()
         limits = [1, 3, 10, 30]
         out["pop_band"] = np.digitize(out["item_id"].map(pop).fillna(0).to_numpy(), limits)
