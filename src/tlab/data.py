@@ -70,6 +70,7 @@ def main() -> None:
     p = argparse.ArgumentParser(description="Download Yambda-50M listens.parquet to local data/.")
     p.add_argument("action", choices=["download"])
     p.add_argument("--output", type=Path, default=Path("data"))
+    p.add_argument("--with-metadata", action="store_true", help="Also download artist/album lookup tables")
     args = p.parse_args()
     from huggingface_hub import hf_hub_download
 
@@ -80,6 +81,15 @@ def main() -> None:
         local_dir=str(args.output),
     )
     print(f"Downloaded to {path}")
+    if args.with_metadata:
+        for name in ("artist", "album"):
+            mapping_path = hf_hub_download(
+                repo_id="yandex/yambda",
+                repo_type="dataset",
+                filename=f"{name}_item_mapping.parquet",
+                local_dir=str(args.output),
+            )
+            print(f"Downloaded metadata to {mapping_path}")
 
 
 if __name__ == "__main__":
