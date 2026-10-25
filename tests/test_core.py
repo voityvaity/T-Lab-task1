@@ -290,3 +290,32 @@ def test_candidate_pool_backfills_unique_items_with_historical_popularity():
     pd.testing.assert_frame_equal(
         pool, retrieve_candidates(historical_only, cutoff, np.array([0, 1, 2]), candidate_limit=30)
     )
+
+
+def test_per_user_bootstrap_matches_existing_global_ranking_metrics():
+    """Uncertainty code must not silently change NDCG/Recall definitions."""
+    from tlab.uncertainty import paired_bootstrap, user_ranking_metrics
+    pairs = pd.DataFrame(
+        [(1, 10, 1), (1, 11, 0), (1, 12, 1),
+         (2, 10, 0), (2, 20, 1), (2, 21, 0),
+         (3, 12, 0), (3, 13, 1)],
+        columns=["uid", "item_id", "label"],
+    )
+    positives = pd.Series({1: 3, 2: 2, 3: 1})
+    baseline = np.array([0.9, 0.2, 0.5, 0.4, 0.3, 0.1, 0.0, 0.7])
+    alternative = baseline[::-1].copy()
+    raw = ranking_metrics(pairs, baseline, positive_counts=positives, k=2)
+    per_user = user_ranking_metrics(pairs, baseline, positives, k=2)
+    assert per_user["ndcg"].mean() == pytest.approx(raw["ndcg@2"])
+    assert per_user["recall"].mean() == pytest.approx(raw["recall@2"])
+    bootstrap = paired_bootstrap(
+        pairs, {"manual": baseline, "auto": alternative}, positives,
+        k=10, n_resamples=200, seed=42,
+    )
+    paired = bootstrap["paired_deltas"]["auto_minus_manual"]["ndcg@10"]
+    assert np.isfinite(paired["estimate"])
+    assert paired["ci95"][0] <= paired["ci95"][1]
+    assert bootstrap == paired_bootstrap(
+        pairs, {"manual": baseline, "auto": alternative}, positives,
+        k=10, n_resamples=200, seed=42,
+    )
