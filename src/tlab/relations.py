@@ -57,8 +57,12 @@ def add_relation_features(
     out = frame.copy()
     cand = out[["uid", "item_id"]].reset_index(drop=True).copy()
     cand["_row_id"] = cand.index.to_numpy()
+    max_days = max(MANUAL_RELATION_DAYS + AUTO_RELATION_DAYS)
+    # All required features use windows <=60 days. Avoid joining the whole history.
     history = events.loc[
-        events["timestamp"] < cutoff, ["uid", "item_id", "timestamp"]
+        (events["timestamp"] < cutoff)
+        & (events["timestamp"] >= cutoff - max_days * BINS_PER_DAY),
+        ["uid", "item_id", "timestamp"],
     ]
     for name in RELATION_NAMES:
         mapping = mappings.get(name)
@@ -71,7 +75,11 @@ def add_relation_features(
         # For one track/artist pair, count its historical listens only once.
         mapping = mapping[["item_id", relation_id]].drop_duplicates()
         cand_linked = cand.merge(mapping, on="item_id", how="left", sort=False)
-        historic_linked = history.merge(mapping, on="item_id", how="inner", sort=False)
+        # Only candidate-related artist/album IDs can contribute to returned
+        # features. Reduce join size without discarding any usable event.
+        relevant_ids = cand_linked[relation_id].dropna().unique()
+        relevant_mapping = mapping.loc[mapping[relation_id].isin(relevant_ids)]
+        historic_linked = history.merge(relevant_mapping, on="item_id", how="inner", sort=False)
         for days in sorted(set(MANUAL_RELATION_DAYS + AUTO_RELATION_DAYS)):
             col = f"user_{name}_count_{days}d"
             recent = historic_linked.loc[
