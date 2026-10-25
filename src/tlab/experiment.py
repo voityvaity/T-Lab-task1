@@ -118,6 +118,19 @@ def _report(metrics: dict, selector: dict) -> str:
         stat = model_summary["ndcg@10"]
         lo, hi = stat["ci95"]
         lines.append(f"| {name} | {stat['estimate']:+.5f} | [{lo:+.5f}, {hi:+.5f}] |")
+    selected_delta = metrics["bootstrap_uncertainty"]["paired_deltas"].get(
+        f"{selected_name}_minus_manual"
+    )
+    if selected_delta is not None:
+        stat = selected_delta["ndcg@10"]
+        lo, hi = stat["ci95"]
+        lines += [
+            "",
+            f"**Validation-selected model vs manual:** test NDCG@10 delta "
+            f"{stat['estimate']:+.5f}; paired user-bootstrap 95% CI "
+            f"[{lo:+.5f}, {hi:+.5f}].",
+            "This is exploratory and does not account for choices made after examining prior test runs.",
+        ]
     lines += [
         "",
         "## Candidate-level binary diagnostics",
