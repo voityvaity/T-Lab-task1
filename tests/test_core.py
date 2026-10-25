@@ -217,3 +217,55 @@ def test_feature_columns_unique_when_manual_and_auto_overlap():
     for column in set(MANUAL_COLUMNS + AUTO_COLUMNS):
         assert list(result.columns).count(column) == 1
     assert len(set(MANUAL_COLUMNS).intersection(AUTO_COLUMNS)) == 6
+
+
+def test_filtered_relation_joins_equal_simple_reference_for_all_windows():
+    """Join optimization must never change a manual or auto relation feature."""
+    from tlab.relations import (
+        add_relation_features, MANUAL_RELATION_DAYS, AUTO_RELATION_DAYS,
+    )
+    cut = 100 * BINS_PER_DAY
+    raw = [
+        (uid, item, cut - days * BINS_PER_DAY, 80)
+        for uid in (1, 2)
+        for item in (10, 11, 12, 99)
+        for days in (0, 1, 3, 7, 14, 30, 60, 61, 90)
+    ]
+    raw.extend([(1, 11, cut + 1, 100), (2, 12, cut + 7, 100)])
+    events = pd.DataFrame(raw, columns=["uid", "item_id", "timestamp", "played_ratio_pct"])
+    mappings = {
+        "artist": pd.DataFrame(
+            [(10, 7), (11, 7), (11, 8), (12, 8), (12, 9), (99, 55),
+             (11, 8), (20, 33)],
+            columns=["item_id", "artist_id"],
+        ),
+        "album": pd.DataFrame(
+            [(10, 101), (11, 101), (12, 102), (99, 103), (20, 104)],
+            columns=["item_id", "album_id"],
+        ),
+    }
+    cand = pd.DataFrame(
+        [(1, 10), (1, 11), (1, 12), (2, 11), (2, 20), (3, 12)],
+        columns=["uid", "item_id"],
+    )
+    actual = add_relation_features(cand, events, cut, mappings)
+    assert actual[["uid", "item_id"]].equals(cand)
+    for name, raw_map in mappings.items():
+        identifier = f"{name}_id"
+        dedup = raw_map.drop_duplicates(["item_id", identifier])
+        linked = events.merge(dedup, on="item_id", how="inner")
+        for days in sorted(set(MANUAL_RELATION_DAYS + AUTO_RELATION_DAYS)):
+            recent = linked.loc[
+                (linked.timestamp < cut)
+                & (linked.timestamp >= cut - days * BINS_PER_DAY)
+            ]
+            column = f"user_{name}_count_{days}d"
+            expected = []
+            for row in cand.itertuples(index=False):
+                identifiers = dedup.loc[dedup.item_id == row.item_id, identifier].unique()
+                value = len(recent.loc[
+                    (recent.uid == row.uid)
+                    & recent[identifier].isin(identifiers)
+                ])
+                expected.append(float(value))
+            assert actual[column].tolist() == expected, column
