@@ -243,11 +243,36 @@ def run(
         "test": None, "train_seconds": hybrid_secs, "features": hybrid_columns,
     }
 
+    # Preregistered ablations: what do fixed-window counts and temporal decays
+    # contribute independently? Never choose hyperparameters from the test.
+    count_only_columns = [name for name in auto_columns if "_count_" in name]
+    decay_only_columns = [name for name in auto_columns if "_decay_" in name]
+    count_model, count_seconds = train_model(
+        train, count_only_columns, iterations=iterations, seed=seed, threads=threads
+    )
+    decay_model, decay_seconds = train_model(
+        train, decay_only_columns, iterations=iterations, seed=seed, threads=threads
+    )
+    models["auto_counts_only"] = {
+        "validation": _evaluate(count_model, valid, count_only_columns, val_counts),
+        "test": None, "train_seconds": count_seconds, "features": count_only_columns,
+    }
+    models["auto_decays_only"] = {
+        "validation": _evaluate(decay_model, valid, decay_only_columns, val_counts),
+        "test": None, "train_seconds": decay_seconds, "features": decay_only_columns,
+    }
+
     # All selection is now complete; access held-out test metrics only here.
     models["popularity"]["test"] = ranking_metrics(test, pop_score_test, positive_counts=test_counts)
     models["manual"]["test"] = _evaluate(manual, test, manual_columns, test_counts)
     models["auto"]["test"] = _evaluate(selected_model, test, selected_cols, test_counts)
     models["manual_plus_auto"]["test"] = _evaluate(hybrid, test, hybrid_columns, test_counts)
+    models["auto_counts_only"]["test"] = _evaluate(
+        count_model, test, count_only_columns, test_counts
+    )
+    models["auto_decays_only"]["test"] = _evaluate(
+        decay_model, test, decay_only_columns, test_counts
+    )
 
     # Final-test analysis only: the bootstrap never selects features or models.
     confidence = paired_bootstrap(
@@ -257,6 +282,8 @@ def run(
             "manual": manual.predict_proba(test[manual_columns])[:, 1],
             "auto": selected_model.predict_proba(test[selected_cols])[:, 1],
             "manual_plus_auto": hybrid.predict_proba(test[hybrid_columns])[:, 1],
+            "auto_counts_only": count_model.predict_proba(test[count_only_columns])[:, 1],
+            "auto_decays_only": decay_model.predict_proba(test[decay_only_columns])[:, 1],
         },
         test_counts,
         seed=seed,
