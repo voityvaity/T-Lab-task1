@@ -14,7 +14,7 @@ import pandas as pd
 
 from .core import AUTO_COLUMNS, MANUAL_COLUMNS, global_cutoffs, make_snapshot
 from .data import BINS_PER_DAY, YAMBDA_REVISION, load_yambda, synthetic_events
-from .metrics import future_positive_counts, ranking_metrics
+from .metrics import future_positive_counts, ranking_metrics, binary_diagnostics
 from .uncertainty import paired_bootstrap
 from .relations import (
     AUTO_RELATION_COLUMNS, MANUAL_RELATION_COLUMNS,
@@ -42,7 +42,18 @@ def train_model(frame: pd.DataFrame, columns: list[str], *, iterations: int, see
 
 def _evaluate(model, frame: pd.DataFrame, columns: list[str], counts: pd.Series) -> dict:
     scores = model.predict_proba(frame[columns])[:, 1]
-    return ranking_metrics(frame, scores, positive_counts=counts)
+    return {
+        **ranking_metrics(frame, scores, positive_counts=counts),
+        **binary_diagnostics(frame["label"], scores, probabilities=True),
+    }
+
+
+def _evaluate_popularity(frame: pd.DataFrame, counts: pd.Series) -> dict:
+    scores = frame["item_count_7d"].to_numpy(dtype=float)
+    return {
+        **ranking_metrics(frame, scores, positive_counts=counts),
+        **binary_diagnostics(frame["label"], scores, probabilities=False),
+    }
 
 
 def _report(metrics: dict, selector: dict) -> str:
@@ -99,6 +110,26 @@ def _report(metrics: dict, selector: dict) -> str:
         stat = model_summary["ndcg@10"]
         lo, hi = stat["ci95"]
         lines.append(f"| {name} | {stat['estimate']:+.5f} | [{lo:+.5f}, {hi:+.5f}] |")
+    lines += [
+        "",
+        "## Candidate-level binary diagnostics",
+        "",
+        "ROC-AUC compares observed Listen+ to unobserved candidate tracks.",
+        "These unobserved tracks are **not verified exposures or explicit negative feedback**;",
+        "LogLoss is conditional on this generated candidate pool, and is not calibrated CTR.",
+        "Popularity is not a probability model, so it has no meaningful LogLoss.",
+        "",
+        "| Model | Val ROC-AUC | Test ROC-AUC | Test LogLoss |",
+        "|---|---:|---:|---:|",
+    ]
+    for name, result in metrics["models"].items():
+        def fmt(value):
+            return "n/a" if value is None else f"{value:.5f}"
+        lines.append(
+            f"| {name} | {fmt(result['validation']['candidate_roc_auc'])} | "
+            f"{fmt(result['test']['candidate_roc_auc'])} | "
+            f"{fmt(result['test']['candidate_logloss'])} |"
+        )
     lines += [
         "",
         "## Automatic feature selection",
@@ -195,7 +226,7 @@ def run(
     pop_score_test = test["item_count_7d"].to_numpy(dtype=float)
     models = {
         "popularity": {
-            "validation": ranking_metrics(valid, pop_score_val, positive_counts=val_counts),
+            "validation": _evaluate_popularity(valid, val_counts),
             "test": None,
             "train_seconds": 0.0,
             "features": ["item_count_7d"],
@@ -266,7 +297,7 @@ def run(
     }
 
     # All selection is now complete; access held-out test metrics only here.
-    models["popularity"]["test"] = ranking_metrics(test, pop_score_test, positive_counts=test_counts)
+    models["popularity"]["test"] = _evaluate_popularity(test, test_counts)
     models["manual"]["test"] = _evaluate(manual, test, manual_columns, test_counts)
     models["auto"]["test"] = _evaluate(selected_model, test, selected_cols, test_counts)
     models["manual_plus_auto"]["test"] = _evaluate(hybrid, test, hybrid_columns, test_counts)
