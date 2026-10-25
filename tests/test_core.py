@@ -425,3 +425,10 @@ def test_bootstrap_reports_selected_decay_model_paired_against_manual():
     assert stat["estimate"] == pytest.approx(correct_delta)
     assert stat["ci95"][0] == pytest.approx(correct_delta)
     assert stat["ci95"][1] == pytest.approx(correct_delta)
+    rank2_result = paired_bootstrap(
+        pairs, {"manual": manual, "auto_decays_only": decay},
+        positives, k=2, n_resamples=200, seed=42,
+    )
+    assert "ndcg@2" in rank2_result["paired_deltas"]["auto_decays_only_minus_manual"]
+    assert "recall@2" in rank2_result["models"]["manual"]
+    assert "ndcg@10" not in rank2_result["models"]["manual"]
