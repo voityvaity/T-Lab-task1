@@ -9,6 +9,12 @@ on:
         default: "100"
         type: choice
         options: ["100", "1000"]
+      evaluation_mode:
+        description: "Single last day or exploratory three-day temporal robustness (longer run)"
+        required: true
+        default: "single"
+        type: choice
+        options: ["single", "temporal_0_21_42"]
       seed:
         description: "Random full-user cohort for independent repeat"
         required: true
@@ -40,8 +46,10 @@ jobs:
       - name: Prevent accidental oversized experiments
         env:
           USERS: ${{ inputs.users }}
+          EVAL_MODE: ${{ inputs.evaluation_mode }}
         run: |
           test "$USERS" = "100" || test "$USERS" = "1000"
+          test "$EVAL_MODE" = "single" || test "$EVAL_MODE" = "temporal_0_21_42"
       - name: Run fast regression tests before costly download
         run: pytest -q
       - name: Run synthetic end-to-end gate before costly download
@@ -53,8 +61,21 @@ jobs:
           USERS: ${{ inputs.users }}
           ITERATIONS: ${{ inputs.iterations }}
           SEED: ${{ inputs.seed }}
+          EVAL_MODE: ${{ inputs.evaluation_mode }}
         run: |
-          /usr/bin/time -v python -m tlab.experiment --data data/flat/50m/listens.parquet --users "$USERS" --seed "$SEED" --iterations "$ITERATIONS" --threads 4 --metadata-dir data --output results/yambda
+          if [ "$EVAL_MODE" = "temporal_0_21_42" ]; then
+            /usr/bin/time -v python -m tlab.robustness \
+              --data data/flat/50m/listens.parquet \
+              --users "$USERS" --seed "$SEED" \
+              --iterations "$ITERATIONS" --threads 4 \
+              --lags "0,21,42" --metadata-dir data --output results/yambda
+          else
+            /usr/bin/time -v python -m tlab.experiment \
+              --data data/flat/50m/listens.parquet \
+              --users "$USERS" --seed "$SEED" \
+              --iterations "$ITERATIONS" --threads 4 \
+              --metadata-dir data --output results/yambda
+          fi
       - name: Upload measured report (never raw data)
         if: always()
         uses: actions/upload-artifact@v4
