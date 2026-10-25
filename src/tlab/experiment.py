@@ -15,6 +15,7 @@ import pandas as pd
 from .core import AUTO_COLUMNS, MANUAL_COLUMNS, global_cutoffs, make_snapshot
 from .data import BINS_PER_DAY, YAMBDA_REVISION, load_yambda, synthetic_events
 from .metrics import future_positive_counts, ranking_metrics
+from .uncertainty import paired_bootstrap
 from .relations import (
     AUTO_RELATION_COLUMNS, MANUAL_RELATION_COLUMNS,
     add_relation_features, load_mappings,
@@ -79,6 +80,25 @@ def _report(metrics: dict, selector: dict) -> str:
             f"{result['test']['ndcg@10']:.5f} | {result['test']['recall@10']:.5f} | "
             f"{result['train_seconds']:.1f} |"
         )
+    lines += [
+        "",
+        "## User-level bootstrap uncertainty (held-out test)",
+        "",
+        "These 95% intervals resample the evaluated test users; they do not measure",
+        "uncertainty from different future days, cohorts, retrieval strategies or model tuning.",
+        "",
+        "| Model | Test NDCG@10 | 95% CI |",
+        "|---|---:|---:|",
+    ]
+    for name, model_summary in metrics["bootstrap_uncertainty"]["models"].items():
+        stat = model_summary["ndcg@10"]
+        lo, hi = stat["ci95"]
+        lines.append(f"| {name} | {stat['estimate']:.5f} | [{lo:.5f}, {hi:.5f}] |")
+    lines += ["", "| Paired comparison | NDCG@10 difference | 95% CI |", "|---|---:|---:|"]
+    for name, model_summary in metrics["bootstrap_uncertainty"]["paired_deltas"].items():
+        stat = model_summary["ndcg@10"]
+        lo, hi = stat["ci95"]
+        lines.append(f"| {name} | {stat['estimate']:+.5f} | [{lo:+.5f}, {hi:+.5f}] |")
     lines += [
         "",
         "## Automatic feature selection",
@@ -229,6 +249,19 @@ def run(
     models["auto"]["test"] = _evaluate(selected_model, test, selected_cols, test_counts)
     models["manual_plus_auto"]["test"] = _evaluate(hybrid, test, hybrid_columns, test_counts)
 
+    # Final-test analysis only: the bootstrap never selects features or models.
+    confidence = paired_bootstrap(
+        test,
+        {
+            "popularity": pop_score_test,
+            "manual": manual.predict_proba(test[manual_columns])[:, 1],
+            "auto": selected_model.predict_proba(test[selected_cols])[:, 1],
+            "manual_plus_auto": hybrid.predict_proba(test[hybrid_columns])[:, 1],
+        },
+        test_counts,
+        seed=seed,
+    )
+
     selection = {
         "importance_train_only": [{"name": name, "importance": float(imp)} for name, imp in importances],
         "trials_validation_only": trials,
@@ -245,6 +278,7 @@ def run(
         "cutoffs": {"train": train_cuts, "validation": valid_cut, "test": test_cut},
         "snapshot_details": details,
         "feature_seconds": round(feature_secs, 3),
+        "bootstrap_uncertainty": confidence,
         "feature_cost_seconds": {
             name: round(sum(x["timings_seconds"][name] for x in details.values()), 4)
             for name in ("candidate_retrieval", "manual_features", "auto_features", "relation_features")
