@@ -111,7 +111,7 @@ def evaluate_time_lags(
         "so do not treat this report as a new untouched confirmation of superiority.",
         "",
         f"- Cohort: {len(events['uid'].unique())} full-history users; seed {seed}",
-        f"- Cohort fingerprint: \`{cohort_fingerprint}\`",
+        f"- Cohort fingerprint: `{cohort_fingerprint}`",
         f"- Relative test lags: {list(sorted(lags))} days (Yambda 5-second bins)",
         f"- CatBoost iterations: {iterations}; candidate limit: {candidate_limit}",
         "",
