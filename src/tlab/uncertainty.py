@@ -64,6 +64,8 @@ def paired_bootstrap(
     rng = np.random.default_rng(seed)
     sample_indices = rng.integers(0, len(users), size=(n_resamples, len(users)))
 
+    ndcg_key = f"ndcg@{k}"
+    recall_key = f"recall@{k}"
     output = {
         "evaluated_users": int(len(users)),
         "seed": int(seed),
@@ -81,8 +83,8 @@ def paired_bootstrap(
 
     for name, table in tables.items():
         output["models"][name] = {
-            "ndcg@10": summarise(table["ndcg"].to_numpy(dtype=float)),
-            "recall@10": summarise(table["recall"].to_numpy(dtype=float)),
+            ndcg_key: summarise(table["ndcg"].to_numpy(dtype=float)),
+            recall_key: summarise(table["recall"].to_numpy(dtype=float)),
         }
 
     if "manual" in tables:
@@ -92,10 +94,10 @@ def paired_bootstrap(
                 continue
             candidate = tables[name]
             output["paired_deltas"][f"{name}_minus_manual"] = {
-                "ndcg@10": summarise(
+                ndcg_key: summarise(
                     candidate["ndcg"].to_numpy(dtype=float) - base["ndcg"].to_numpy(dtype=float)
                 ),
-                "recall@10": summarise(
+                recall_key: summarise(
                     candidate["recall"].to_numpy(dtype=float) - base["recall"].to_numpy(dtype=float)
                 ),
             }
