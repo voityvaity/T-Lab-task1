@@ -205,3 +205,15 @@ def test_real_parquet_loader_rejects_missing_columns(tmp_path):
     pd.DataFrame({"uid": [1, 1], "item_id": [10, 11]}).to_parquet(path)
     with pytest.raises(ValueError, match="schema missing columns"):
         load_yambda(path, users=1, seed=42)
+
+
+def test_feature_columns_unique_when_manual_and_auto_overlap():
+    """Regression: the overlapping 1d and 60d counts previously broke CatBoost."""
+    from tlab.core import MANUAL_COLUMNS, AUTO_COLUMNS
+    events = synthetic_events(4, days=80, seed=10)
+    cutoff = 70 * BINS_PER_DAY
+    result, _ = make_snapshot(events, cutoff, np.sort(events.uid.unique()), candidate_limit=30)
+    assert result.columns.is_unique
+    for column in set(MANUAL_COLUMNS + AUTO_COLUMNS):
+        assert list(result.columns).count(column) == 1
+    assert len(set(MANUAL_COLUMNS).intersection(AUTO_COLUMNS)) == 6
