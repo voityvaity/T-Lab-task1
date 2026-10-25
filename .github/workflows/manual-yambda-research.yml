@@ -54,6 +54,14 @@ jobs:
         run: pytest -q
       - name: Run synthetic end-to-end gate before costly download
         run: python -m tlab.experiment --demo --users 8 --snapshots 1 --candidates 24 --iterations 10 --threads 2 --output results/preflight-synthetic
+      - name: Run synthetic three-cutoff gate before costly download
+        if: ${{ inputs.evaluation_mode == 'temporal_0_21_42' }}
+        run: |
+          python -m tlab.robustness --demo --users 6 --seed 21 \
+            --snapshots 1 --iterations 5 --candidates 24 --threads 2 \
+            --lags "0,21" --output results/preflight-temporal
+          test -s results/preflight-temporal/TEMPORAL_REPORT.md
+          test -s results/preflight-temporal/temporal_robustness.json
       - name: Fetch only Yambda-50M listens
         run: python -m tlab.data download --output data --with-metadata
       - name: Run point-in-time experiment
