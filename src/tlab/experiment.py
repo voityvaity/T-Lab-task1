@@ -212,7 +212,7 @@ def run(
     )
     ordered = [x[0] for x in importances]
     # Step 2: choose feature *count* using validation, never test.
-    sizes = sorted(set(min(x, len(ordered)) for x in (4, 8, 12, len(ordered))))
+    sizes = sorted(set(min(x, len(ordered)) for x in (4, 8, 12, 20, 32, len(ordered))))
     trials = []
     selected_cols = None
     selected_model = None
