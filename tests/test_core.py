@@ -338,3 +338,23 @@ def test_global_time_anchor_is_independent_of_selected_users(tmp_path):
     _, valid, test = global_cutoffs(sample, snapshots=1, anchor_timestamp=full_max)
     assert test == full_max - BINS_PER_DAY
     assert valid == test - 2 * BINS_PER_DAY
+
+
+def test_binary_diagnostics_auc_ties_and_logloss_reference():
+    from tlab.metrics import binary_diagnostics
+
+    y = np.array([0, 1, 0, 1], dtype=np.int8)
+    s = np.array([0.1, 0.9, 0.5, 0.5])
+    got = binary_diagnostics(y, s, probabilities=True)
+    # Positive .9 beats both negatives; positive .5 beats .1 and ties .5.
+    assert got["candidate_roc_auc"] == pytest.approx(0.875)
+    reference_loss = -np.mean(
+        y * np.log(s) + (1 - y) * np.log1p(-s)
+    )
+    assert got["candidate_logloss"] == pytest.approx(reference_loss)
+    assert got["candidate_positive_pairs"] == 2
+    raw = binary_diagnostics(y, np.array([1, 5, 5, 9]), probabilities=False)
+    assert raw["candidate_logloss"] is None
+    assert raw["candidate_roc_auc"] == pytest.approx(0.875)
+    all_positive = binary_diagnostics(np.ones(3), np.array([0.5, 0.6, 0.7]), probabilities=True)
+    assert all_positive["candidate_roc_auc"] is None
