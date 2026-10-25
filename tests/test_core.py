@@ -319,3 +319,22 @@ def test_per_user_bootstrap_matches_existing_global_ranking_metrics():
         pairs, {"manual": baseline, "auto": alternative}, positives,
         k=10, n_resamples=200, seed=42,
     )
+
+
+def test_global_time_anchor_is_independent_of_selected_users(tmp_path):
+    from tlab.data import load_yambda, global_last_timestamp
+
+    parquet = tmp_path / "listens.parquet"
+    source = pd.DataFrame([
+        (1, 10, 0, 80), (1, 11, 100, 80),
+        (2, 10, 0, 80), (2, 12, 90, 80),
+        (3, 13, 0, 80), (3, 14, 2 * BINS_PER_DAY + 500, 80),
+    ], columns=["uid", "item_id", "timestamp", "played_ratio_pct"])
+    source.to_parquet(parquet, engine="pyarrow", index=False)
+    full_max = 2 * BINS_PER_DAY + 500
+    assert global_last_timestamp(parquet) == full_max
+    sample = load_yambda(parquet, users=1, seed=42)
+    assert sample.attrs["full_dataset_max_timestamp"] == full_max
+    _, valid, test = global_cutoffs(sample, snapshots=1, anchor_timestamp=full_max)
+    assert test == full_max - BINS_PER_DAY
+    assert valid == test - 2 * BINS_PER_DAY
