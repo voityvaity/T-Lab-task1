@@ -87,7 +87,7 @@ def paired_bootstrap(
 
     if "manual" in tables:
         base = tables["manual"]
-        for name in ("auto", "manual_plus_auto"):
+        for name in ("auto", "manual_plus_auto", "auto_counts_only", "auto_decays_only"):
             if name not in tables:
                 continue
             candidate = tables[name]
