@@ -66,6 +66,7 @@ def _report(metrics: dict, selector: dict) -> str:
         f"- Dataset mode: {metrics['dataset_mode']}",
         f"- Sampled users: {metrics['users']}",
         f"- Seed: {metrics['seed']}",
+        f"- Test lag (days relative to latest observed event): {metrics['test_lag_days']}",
         f"- Cutoffs (Yambda 5-second bins): {metrics['cutoffs']}",
         "- Positive: strictly >50% played in one day after the cutoff (Yambda Listen+).",
         "- Unobserved candidates are not proven dislikes or impressions.",
@@ -92,6 +93,16 @@ def _report(metrics: dict, selector: dict) -> str:
             f"{result['test']['ndcg@10']:.5f} | {result['test']['recall@10']:.5f} | "
             f"{result['train_seconds']:.1f} |"
         )
+    lines += [
+        "",
+        "## Matched ItemKNN ablation (diagnostic only)",
+        "",
+        "These extra models are **not eligible for headline selection**. We use the",
+        "same manually selected feature set with/without ItemKNN, and the same",
+        "validation-selected automatic feature set with/without ItemKNN.",
+        "They use identical candidates, cutoffs and classifier hyperparameters.",
+        "",
+    ]
     selected_name = metrics["model_selected_by_validation"]
     lines += [
         "",
@@ -168,6 +179,7 @@ def _report(metrics: dict, selector: dict) -> str:
         "- ItemKNN is an additional causal candidate-ranking baseline; it does not currently add retrieval candidates.",
         "- No impression logs: results cannot be interpreted as calibrated CTR.",
         "- Compare to stronger candidate retrieval, try alternative seeds and cohort sizes.",
+        "- The two ItemKNN matched-input ablations are explanatory only; primary validation selection remains limited to the original seven models.",
         "- Observe both feature creation and model training costs.",
         "",
         f"Total feature computation seconds: {metrics['feature_seconds']:.1f}",
@@ -191,12 +203,14 @@ def run(
     snapshots: int = 4, candidate_limit: int = 200, threads: int = 4,
     mappings: dict[str, pd.DataFrame] | None = None,
     anchor_timestamp: int | None = None,
+    test_lag_days: int = 0,
 ) -> dict:
     if events.empty:
         raise ValueError("Events are empty")
     users = np.sort(events["uid"].unique())
     train_cuts, valid_cut, test_cut = global_cutoffs(
-        events, snapshots=snapshots, anchor_timestamp=anchor_timestamp
+        events, snapshots=snapshots, anchor_timestamp=anchor_timestamp,
+        test_lag_days=test_lag_days,
     )
     cohort_sha256 = hashlib.sha256(users.astype("<i8", copy=False).tobytes()).hexdigest()
     manual_columns = MANUAL_COLUMNS + ["itemknn_score"] + (
@@ -341,6 +355,30 @@ def run(
         models, key=lambda name: (-models[name]["validation"]["ndcg@10"], name)
     )[0]
 
+    # CONTROLLED ABLATIONS: keep the original 7-way validation-selected winner
+    # fixed above. These extra models explain ItemKNN's marginal contribution,
+    # but are not eligible for retrospective headline selection.
+    manual_without_knn_columns = [c for c in manual_columns if c != "itemknn_score"]
+    auto_with_knn_columns = list(dict.fromkeys(selected_cols + ["itemknn_score"]))
+    manual_without_knn, no_knn_seconds = train_model(
+        train, manual_without_knn_columns,
+        iterations=iterations, seed=seed, threads=threads,
+    )
+    auto_with_knn, auto_knn_seconds = train_model(
+        train, auto_with_knn_columns,
+        iterations=iterations, seed=seed, threads=threads,
+    )
+    models["manual_without_itemknn"] = {
+        "validation": _evaluate(manual_without_knn, valid, manual_without_knn_columns, val_counts),
+        "test": None, "train_seconds": no_knn_seconds,
+        "features": manual_without_knn_columns,
+    }
+    models["auto_plus_itemknn"] = {
+        "validation": _evaluate(auto_with_knn, valid, auto_with_knn_columns, val_counts),
+        "test": None, "train_seconds": auto_knn_seconds,
+        "features": auto_with_knn_columns,
+    }
+
     # All selection is now complete; access held-out test metrics only here.
     models["popularity"]["test"] = _evaluate_popularity(test, test_counts)
     models["itemknn"]["test"] = {
@@ -358,6 +396,12 @@ def run(
     models["auto_decays_only"]["test"] = _evaluate(
         decay_model, test, decay_only_columns, test_counts
     )
+    models["manual_without_itemknn"]["test"] = _evaluate(
+        manual_without_knn, test, manual_without_knn_columns, test_counts
+    )
+    models["auto_plus_itemknn"]["test"] = _evaluate(
+        auto_with_knn, test, auto_with_knn_columns, test_counts
+    )
 
     # Final-test analysis only: the bootstrap never selects features or models.
     confidence = paired_bootstrap(
@@ -370,9 +414,19 @@ def run(
             "manual_plus_auto": hybrid.predict_proba(test[hybrid_columns])[:, 1],
             "auto_counts_only": count_model.predict_proba(test[count_only_columns])[:, 1],
             "auto_decays_only": decay_model.predict_proba(test[decay_only_columns])[:, 1],
+            "manual_without_itemknn": manual_without_knn.predict_proba(
+                test[manual_without_knn_columns]
+            )[:, 1],
+            "auto_plus_itemknn": auto_with_knn.predict_proba(test[auto_with_knn_columns])[:, 1],
         },
         test_counts,
         seed=seed,
+        comparisons={
+            "manual_minus_manual_without_itemknn": ("manual", "manual_without_itemknn"),
+            "auto_plus_itemknn_minus_auto": ("auto_plus_itemknn", "auto"),
+            "auto_minus_manual_without_itemknn": ("auto", "manual_without_itemknn"),
+            "auto_plus_itemknn_minus_manual": ("auto_plus_itemknn", "manual"),
+        },
     )
 
     selection = {
@@ -385,6 +439,7 @@ def run(
         "dataset_mode": dataset_mode,
         "using_artist_album_metadata": mappings is not None,
         "seed": seed,
+        "test_lag_days": int(test_lag_days),
         "users": len(users),
         "cohort_sha256": cohort_sha256,
         "yambda_revision": YAMBDA_REVISION if dataset_mode == "yambda-50m" else None,
@@ -406,6 +461,7 @@ def run(
     }
     config = {
         "dataset_mode": dataset_mode, "seed": seed, "users": len(users),
+        "test_lag_days": int(test_lag_days),
         "cohort_sha256": cohort_sha256,
         "yambda_revision": YAMBDA_REVISION if dataset_mode == "yambda-50m" else None,
         "cutoff_anchor": int(anchor_timestamp) if anchor_timestamp is not None else int(events["timestamp"].max()),
@@ -429,6 +485,8 @@ def main() -> None:
     p.add_argument("--users", type=int, default=100, help="Sampled users, 0 means all (real dataset)")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--snapshots", type=int, default=4)
+    p.add_argument("--test-lag-days", type=int, default=0,
+                   help="Shift all train/validation/test cutoffs back by N whole days")
     p.add_argument("--candidates", type=int, default=200)
     p.add_argument("--iterations", type=int, default=200)
     p.add_argument("--threads", type=int, default=4)
@@ -438,6 +496,8 @@ def main() -> None:
     args = p.parse_args()
     if args.demo == (args.data is not None):
         p.error("Supply exactly one of --data PATH or --demo")
+    if args.test_lag_days < 0:
+        p.error("--test-lag-days must be nonnegative")
     if args.snapshots < 1 or args.iterations < 1:
         p.error("--snapshots and --iterations must be positive")
     events = synthetic_events(n_users=max(4, args.users), seed=args.seed) if args.demo else load_yambda(
@@ -450,6 +510,7 @@ def main() -> None:
         dataset_mode="synthetic" if args.demo else "yambda-50m",
         output=args.output, seed=args.seed, snapshots=args.snapshots,
         candidate_limit=args.candidates, iterations=args.iterations, threads=args.threads,
+        test_lag_days=args.test_lag_days,
     )
     print(f"Wrote measured run outputs to {args.output}")
     for name, metrics in results["models"].items():
