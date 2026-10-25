@@ -78,3 +78,25 @@ The original baseline omitted Yambda's static track–artist and track–album l
 **Newly discovered limitation:** Feature generation repeatedly joins event histories against relation tables at every cutoff. This may use substantial peak memory and must be profiled before claiming scalable performance. Also, 27 manual signals are stronger than 23, but still not equivalent to a top industrial ranking system with collaborative retrieval/latent factor features.
 
 A proper research result still requires measured full-dataset or large-cohort NDCG and recall, computation costs, and uncertainty estimates.
+
+
+## Post-first-run revision (25 October 2026; new experimental protocol)
+
+The exploratory run [40174763195](https://github.com/voityvaity/T-Lab-task1/actions/runs/40174763195) at commit `a8a59d2` revealed low candidate retrieval coverage and only 14 test-positive users in the 100-user sample. Its test results are descriptive only; the auto-versus-manual NDCG difference is too small for a confident conclusion.
+
+The *new* research protocol changes:
+- Retain fixed historical popularity, repeat and 14-day transition sources but backfill de-duplicated candidate slots up to the 200-item limit with historically popular tracks. Retrieval still uses only data strictly before each cutoff. Because the candidate pool changes, new NDCG/Recall scores **must not be presented as directly comparable** with the old 100-user run.
+- Use efficient 60-day bounded event joins filtered to artists/albums attached to candidate items; results are checked against a naïve full-history reference for every relevant time window.
+- Expand automatic feature candidates to `{1,3,7,10,14,30,60}`-day counts and `{2,5,7,10,21,30}`-day exponentially decayed histories over user/item/user-item scopes (39), plus 8 relation-based user–artist/user–album count windows (47 generated columns in metadata mode). Manual feature set remains at 27.
+- Rank the 47 generated columns using train-only importance, then choose best `{4,8,12,20,32,47}` based on *validation-only* NDCG@10.
+- Independently train additional count-only and decay-only CatBoost ablations using exactly the same candidates/splits/parameters; test these only after selection.
+- Report a **paired 1,000-resample user bootstrap** for the final test rankings and auto/hybrid-minus-manual differences. This quantifies only which users were sampled, not the uncertainty caused by a different future day or candidate set; do not claim significance with 14 positive users.
+- Capture peak resident memory during real experiments using `/usr/bin/time -v` and per-stage computation times.
+
+**Research integrity:** The 100-user test was examined before this revision, so the revised experiment is a new exploratory protocol. For a final unbiased estimate, reserve an untouched evaluation horizon or independent data and do not choose further configurations by looking at its test values. A strong ItemKNN/ALS collaborative baseline, alternative seed cohorts and multiple time-split evaluations still need to be implemented for a high-quality submission.
+
+Primary sources:
+- Yambda dataset: https://huggingface.co/datasets/yandex/yambda
+- Featuretools point-in-time cutoff correctness: https://docs.featuretools.com/en/stable/getting_started/handling_time.html
+- Time to Split (RecSys 2025): https://doi.org/10.1145/3705328.3748164
+- Known time-decay recommender prior art: https://doi.org/10.1145/3758126.3758138
