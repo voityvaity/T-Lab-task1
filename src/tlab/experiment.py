@@ -16,6 +16,7 @@ from .core import AUTO_COLUMNS, MANUAL_COLUMNS, global_cutoffs, make_snapshot
 from .data import BINS_PER_DAY, YAMBDA_REVISION, load_yambda, synthetic_events
 from .metrics import future_positive_counts, ranking_metrics, binary_diagnostics
 from .uncertainty import paired_bootstrap
+from .itemknn import itemknn_scores
 from .relations import (
     AUTO_RELATION_COLUMNS, MANUAL_RELATION_COLUMNS,
     add_relation_features, load_mappings,
@@ -151,6 +152,7 @@ def _report(metrics: dict, selector: dict) -> str:
         "## Limitations and next actions",
         "",
         "- Candidate generation uses popularity, repeats and historical transitions; it is not exhaustive retrieval.",
+        "- ItemKNN is an additional causal candidate-ranking baseline; it does not currently add retrieval candidates.",
         "- No impression logs: results cannot be interpreted as calibrated CTR.",
         "- Compare to stronger candidate retrieval, try alternative seeds and cohort sizes.",
         "- Observe both feature creation and model training costs.",
@@ -184,11 +186,18 @@ def run(
         events, snapshots=snapshots, anchor_timestamp=anchor_timestamp
     )
     cohort_sha256 = hashlib.sha256(users.astype("<i8", copy=False).tobytes()).hexdigest()
-    manual_columns = MANUAL_COLUMNS + (MANUAL_RELATION_COLUMNS if mappings is not None else [])
+    manual_columns = MANUAL_COLUMNS + ["itemknn_score"] + (
+        MANUAL_RELATION_COLUMNS if mappings is not None else []
+    )
     auto_columns = AUTO_COLUMNS + (AUTO_RELATION_COLUMNS if mappings is not None else [])
 
     def snapshot(cutoff: int):
         frame, info = make_snapshot(events, cutoff, users, candidate_limit=candidate_limit)
+        start_itemknn = time.perf_counter()
+        frame["itemknn_score"] = itemknn_scores(events, cutoff, frame)
+        info["timings_seconds"]["itemknn_features"] = round(
+            time.perf_counter() - start_itemknn, 6
+        )
         if mappings is not None:
             start_relations = time.perf_counter()
             frame = add_relation_features(frame, events, cutoff, mappings)
@@ -238,6 +247,17 @@ def run(
             "train_seconds": 0.0,
             "features": ["item_count_7d"],
         }
+    }
+    models["itemknn"] = {
+        "validation": {
+            **ranking_metrics(
+                valid, valid["itemknn_score"].to_numpy(), positive_counts=val_counts
+            ),
+            **binary_diagnostics(
+                valid["label"], valid["itemknn_score"].to_numpy(), probabilities=False
+            ),
+        },
+        "test": None, "train_seconds": 0.0, "features": ["itemknn_score"],
     }
     manual, elapsed = train_model(train, manual_columns, iterations=iterations, seed=seed, threads=threads)
     models["manual"] = {
@@ -310,6 +330,12 @@ def run(
 
     # All selection is now complete; access held-out test metrics only here.
     models["popularity"]["test"] = _evaluate_popularity(test, test_counts)
+    models["itemknn"]["test"] = {
+        **ranking_metrics(test, test["itemknn_score"].to_numpy(), positive_counts=test_counts),
+        **binary_diagnostics(
+            test["label"], test["itemknn_score"].to_numpy(), probabilities=False
+        ),
+    }
     models["manual"]["test"] = _evaluate(manual, test, manual_columns, test_counts)
     models["auto"]["test"] = _evaluate(selected_model, test, selected_cols, test_counts)
     models["manual_plus_auto"]["test"] = _evaluate(hybrid, test, hybrid_columns, test_counts)
@@ -325,6 +351,7 @@ def run(
         test,
         {
             "popularity": pop_score_test,
+            "itemknn": test["itemknn_score"].to_numpy(dtype=float),
             "manual": manual.predict_proba(test[manual_columns])[:, 1],
             "auto": selected_model.predict_proba(test[selected_cols])[:, 1],
             "manual_plus_auto": hybrid.predict_proba(test[hybrid_columns])[:, 1],
@@ -355,7 +382,10 @@ def run(
         "bootstrap_uncertainty": confidence,
         "feature_cost_seconds": {
             name: round(sum(x["timings_seconds"][name] for x in details.values()), 4)
-            for name in ("candidate_retrieval", "manual_features", "auto_features", "relation_features")
+            for name in (
+                "candidate_retrieval", "manual_features", "auto_features",
+                "itemknn_features", "relation_features",
+            )
         },
         "models": models,
         "model_selected_by_validation": selected_model_name,
