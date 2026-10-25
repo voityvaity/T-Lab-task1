@@ -11,9 +11,9 @@ Research prototype for the T-Bank ML selection task (October 2026).
 - **Dataset:** [Yandex Yambda-50M](https://huggingface.co/datasets/yandex/yambda), flat `listens.parquet`. Its event `timestamp` is expressed in **5-second bins**, not Unix seconds. Optional track–artist and track–album mappings are supported; no genre information is assumed.
 - **Task:** recommend tracks at a global cutoff time; positive means a qualifying listen (`played_ratio_pct > 50`) occurs in the **next day**. A missing listen is *unobserved*, not a confirmed negative.
 - **Candidate generation:** fixed, deterministic union of popular historical tracks, user's recently listened tracks and historical one-hour transitions (counted only in the past 14 days), derived only from data earlier than each cutoff. This is intentionally a relatively simple retrieval baseline; candidate coverage is explicitly measured.
-- **Hand-made features:** activity/popularity and repeated user–item interaction counts in 1/7/30/60-day windows; user/item/pair recency; 30-day track diversity, listen-completion averages, 7-to-30-day trends, and a user–item-popularity-stratum affinity (23 manual features).
+- **Hand-made features:** activity/popularity and repeated user–item interaction counts in 1/7/30/60-day windows; user/item/pair recency; track diversity, listen completion, temporal trends and popularity-stratum affinity (23 manual temporal features). The experiment adds a causal ItemKNN score and, in metadata mode, 4 user–artist/album features (28 manual baseline inputs in total).
 - **Auto features:** programmatic cross-product of `{user,item,user-item}` with count windows `{1,3,7,10,14,30,60}` and exponential decay scales `{2,5,7,10,21,30}` days. Rank candidates by training-only CatBoost feature importance and choose the retained subset size `{4,8,12,20,32,all}` on validation (not test).
-- **Comparisons:** historical popularity, hand-engineered CatBoost, automatically selected CatBoost, manual + automatic CatBoost, count-only CatBoost and decay-only CatBoost. All share the exact same temporal candidate pool.
+- **Comparisons:** historical popularity, past-only ItemKNN, hand-engineered CatBoost, automatically selected CatBoost, manual + automatic CatBoost, count-only CatBoost and decay-only CatBoost. All share the exact same temporal candidate pool.
 - **Evaluation:** global cutoff with disjoint one-day label periods, same candidates across models at each cutoff, NDCG@10/Recall@10 over users with future positives (denominator counts **all** positive tracks, including unretrieved ones), candidate coverage, CPU training times and feature computation times.
 - **Time safety:** every history aggregate is computed from events with `timestamp < cutoff`. Validation determines feature count/model selection. Test is only scored once after that selection.
 
@@ -89,7 +89,7 @@ These features use extra memory: history is joined to static relations for each 
 - Test ranking scores are now computed only after all validation-based feature selection has finished.
 - Fixed-window baseline uses 1/7/30/60-day history, consistent with the minimum history check.
 - The runtime report now breaks feature computation down into retrieval, manual, generated and relation-feature stages.
-- Optional artist/album mappings increase the baseline to **27 manual features** and the automatic bank to **47 generated features** (39 time-window/decay features and 8 artist/album counts).
+- Optional artist/album mappings plus the ItemKNN score increase the manual CatBoost baseline to **28 inputs**; the automatic bank contains **47 generated features** (39 time-window/decay features and 8 artist/album counts).
 - **Important:** This repository does not yet contain completed empirical results on real Yambda, confidence intervals, a tuned strong collaborative-filtering baseline, or a scalable benchmark of the full 10,000-user dataset. Do not submit synthetic results as research evidence.
 - See [research/AUDIT_2026-10-24.md](research/AUDIT_2026-10-24.md) for verified fixes and remaining work.
 
@@ -125,3 +125,16 @@ See [POST_RUN_AUDIT_2026-10-25.md](research/POST_RUN_AUDIT_2026-10-25.md) for me
 Go to [Manual Yambda research](https://github.com/voityvaity/T-Lab-task1/actions/workflows/manual-yambda-research.yml), select branch `main`, `users=1000`, `iterations=120`. This is a larger experiment on a random cohort with *complete histories*, **not** the full population of 10,000 users. If it passes, inspect `yambda-research-report` (metrics, bootstrap CIs, feature selection, ablation results) and GitHub logs for the maximum resident memory. Do not compare against the previous 100-user metrics directly because the candidate protocol has changed.
 
 The separate baseline comparison with ALS/ItemKNN remains a major limitation and must be addressed before positioning this as a strong industrial-quality recommender.
+
+
+## Independent source-backed audit — 25 October 2026
+
+A second audit grounded in the official Yambda data schema, Featuretools time-cutoff guidance, RecSys 2025 splitting research and RecSys 2026 offline-evaluation validity research is documented in [research/INDEPENDENT_AUDIT_2026-10-25.md](research/INDEPENDENT_AUDIT_2026-10-25.md).
+
+New implementation changes require a **fresh** GitHub Actions test run: Yambda sampling now uses the **full dataset's maximum timestamp** as the global anchor (not the maximum among selected users), ROC-AUC and LogLoss are reported as **candidate-conditional implicit-label diagnostics**, and the headline model is chosen by validation NDCG before evaluating the final test. A causal ItemKNN co-listening baseline now scores the same candidate pool and contributes a feature to the manual CatBoost model. It **does not** generate candidates.
+
+**Do not reuse or label the old 1,000-user score from Actions #40178980085 as a result of these new changes.** Those scores belong to SHA `b05429449738380d0ad5750307b142ed85914a01`. The new HEAD has not yet passed CI; all new model outcomes remain unknown.
+
+Preferred verification: run [Manual tests](https://github.com/voityvaity/T-Lab-task1/actions/workflows/manual-tests.yml) first. Then run [Manual Yambda research](https://github.com/voityvaity/T-Lab-task1/actions/workflows/manual-yambda-research.yml) with **100 users, 120 iterations**, followed by 1,000 users if smoke succeeds.
+
+The core scientific limitations remain candidate coverage, lack of real impression negatives, unmodeled likes/dislikes and organic signals, lack of ItemKNN/ALS retrieval expansion, and no independent multiple-seed/rolling-time confirmation.
