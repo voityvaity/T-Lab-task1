@@ -53,9 +53,8 @@
 
 ## Как запускать
 
-1. [Manual tests](https://github.com/voityvaity/T-Lab-task1/actions/workflows/manual-tests.yml) на текущем `main`.
-2. [Manual Yambda research](https://github.com/voityvaity/T-Lab-task1/actions/workflows/manual-yambda-research.yml), ветка `main`, `evaluation_mode=temporal_0_21_42`, `users=1000`, `seed=42`, `iterations=120`.
-3. После успеха изучить архив `yambda-research-report`, особенно `TEMPORAL_REPORT.md` и содержимое всех `lag-N` каталогов.
+1. Достаточно [Manual Yambda research](https://github.com/voityvaity/T-Lab-task1/actions/workflows/manual-yambda-research.yml), ветка `main`, `evaluation_mode=temporal_0_21_42`, `users=1000`, `seed=42`, `iterations=120`. Workflow сам запустит `pytest` и обе синтетические проверки до скачивания датасета. Отдельный [Manual tests](https://github.com/voityvaity/T-Lab-task1/actions/workflows/manual-tests.yml) необязателен.
+2. После успеха изучить архив `yambda-research-report`, особенно `TEMPORAL_REPORT.md` и содержимое всех `lag-N` каталогов.
 4. Только по завершённому эксперименту добавить **новые** измерения в основной конкурсный отчёт. Старые цифры останутся корректными только для своих прежних SHA/seed.
 
 **Статус этой страницы при создании:** исходный код и тесты новых экспериментов сохранены, **проверка нового коммита в GitHub Actions ещё не проведена**. Никакие новые NDCG и интервалы не прогнозируются и не выдумываются.
