@@ -45,19 +45,29 @@ AUTO_COLUMNS = [spec.name for spec in AUTO_SPECS]
 
 
 def global_cutoffs(
-    events: pd.DataFrame, snapshots: int = 4, anchor_timestamp: int | None = None
+    events: pd.DataFrame,
+    snapshots: int = 4,
+    anchor_timestamp: int | None = None,
+    test_lag_days: int = 0,
 ) -> tuple[list[int], int, int]:
-    """Disjoint 1-day labels at the same globally anchored event horizon."""
+    """Disjoint one-day outcomes with a cohort-independent full-source anchor.
+
+    A lag of 21 moves the entire train/validation/test timeline back by 21
+    days, not just the test labels. No training label can touch its validation
+    or test window. History computations still use timestamps < each cutoff.
+    """
     if events.empty:
         raise ValueError("Empty events")
     if snapshots < 1:
         raise ValueError("snapshots must be positive")
+    if test_lag_days < 0 or int(test_lag_days) != test_lag_days:
+        raise ValueError("test_lag_days must be a nonnegative integer")
     sampled_max = int(events["timestamp"].max())
     if anchor_timestamp is None:
         anchor_timestamp = sampled_max
     if anchor_timestamp < sampled_max:
         raise ValueError("Global anchor cannot precede any sampled event")
-    test = int(anchor_timestamp) - BINS_PER_DAY
+    test = int(anchor_timestamp) - (1 + int(test_lag_days)) * BINS_PER_DAY
     valid = test - 2 * BINS_PER_DAY
     train = [valid - (3 * i) * BINS_PER_DAY for i in range(snapshots, 0, -1)]
     if min(train) - 60 * BINS_PER_DAY < int(events["timestamp"].min()):
