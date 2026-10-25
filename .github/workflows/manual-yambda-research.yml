@@ -47,7 +47,7 @@ jobs:
           USERS: ${{ inputs.users }}
           ITERATIONS: ${{ inputs.iterations }}
         run: |
-          python -m tlab.experiment --data data/flat/50m/listens.parquet --users "$USERS" --iterations "$ITERATIONS" --threads 4 --metadata-dir data --output results/yambda
+          /usr/bin/time -v python -m tlab.experiment --data data/flat/50m/listens.parquet --users "$USERS" --iterations "$ITERATIONS" --threads 4 --metadata-dir data --output results/yambda
       - name: Upload measured report (never raw data)
         if: always()
         uses: actions/upload-artifact@v4
