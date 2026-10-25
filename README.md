@@ -59,7 +59,8 @@ Each experiment writes `metrics.json`, `feature_selection.json`, `run_config.jso
 - [ ] Reproduce on real 100-user Yambda cohort
 - [ ] Reproduce on real 1,000-user cohort
 - [ ] Run full 10,000-user benchmark if hardware permits
-- [ ] Confidence intervals and stability across cohort seeds
+- [x] User-level bootstrap interval implementation and paired comparisons (to be verified in the next CI run)
+- [ ] Stability across cohort seeds and time horizons
 - [ ] Compare ItemKNN / ALS candidate retrieval and add model ablations
 
 ## Sources
