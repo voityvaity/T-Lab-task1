@@ -421,6 +421,7 @@ def test_bootstrap_reports_selected_decay_model_paired_against_manual():
     assert "auto_decays_only_minus_manual" in deltas
     assert "auto_counts_only_minus_manual" in deltas
     stat = deltas["auto_decays_only_minus_manual"]["ndcg@10"]
-    assert stat["estimate"] == pytest.approx(1.0)
-    assert stat["ci95"][0] == pytest.approx(1.0)
-    assert stat["ci95"][1] == pytest.approx(1.0)
+    correct_delta = 1.0 - 1.0 / np.log2(3.0)
+    assert stat["estimate"] == pytest.approx(correct_delta)
+    assert stat["ci95"][0] == pytest.approx(correct_delta)
+    assert stat["ci95"][1] == pytest.approx(correct_delta)
