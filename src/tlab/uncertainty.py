@@ -44,6 +44,7 @@ def paired_bootstrap(
     k: int = 10,
     n_resamples: int = 1000,
     seed: int = 42,
+    comparisons: dict[str, tuple[str, str]] | None = None,
 ) -> dict:
     """95% percentile CIs and paired model differences; no re-training or tuning.
 
@@ -87,18 +88,28 @@ def paired_bootstrap(
             recall_key: summarise(table["recall"].to_numpy(dtype=float)),
         }
 
-    if "manual" in tables:
-        base = tables["manual"]
-        for name in ("auto", "manual_plus_auto", "auto_counts_only", "auto_decays_only"):
-            if name not in tables:
-                continue
-            candidate = tables[name]
-            output["paired_deltas"][f"{name}_minus_manual"] = {
-                ndcg_key: summarise(
-                    candidate["ndcg"].to_numpy(dtype=float) - base["ndcg"].to_numpy(dtype=float)
-                ),
-                recall_key: summarise(
-                    candidate["recall"].to_numpy(dtype=float) - base["recall"].to_numpy(dtype=float)
-                ),
-            }
+    contrasts = {
+        f"{name}_minus_manual": (name, "manual")
+        for name in ("auto", "manual_plus_auto", "auto_counts_only", "auto_decays_only")
+        if name in tables and "manual" in tables
+    }
+    for name, pair in (comparisons or {}).items():
+        if name in contrasts:
+            raise ValueError(f"Duplicate contrast name: {name}")
+        if len(pair) != 2 or pair[0] not in tables or pair[1] not in tables:
+            raise ValueError(f"Unknown model in contrast {name}: {pair}")
+        contrasts[name] = pair
+    for contrast_name, (candidate_name, baseline_name) in contrasts.items():
+        candidate = tables[candidate_name]
+        baseline = tables[baseline_name]
+        output["paired_deltas"][contrast_name] = {
+            ndcg_key: summarise(
+                candidate["ndcg"].to_numpy(dtype=float)
+                - baseline["ndcg"].to_numpy(dtype=float)
+            ),
+            recall_key: summarise(
+                candidate["recall"].to_numpy(dtype=float)
+                - baseline["recall"].to_numpy(dtype=float)
+            ),
+        }
     return output
