@@ -8,7 +8,7 @@ Research prototype for the T-Bank ML selection task (October 2026).
 
 ## Research design
 
-- **Dataset:** [Yandex Yambda-50M](https://huggingface.co/datasets/yandex/yambda), flat `listens.parquet`. Its event `timestamp` is expressed in **5-second bins**, not Unix seconds. No artist/genre metadata are assumed.
+- **Dataset:** [Yandex Yambda-50M](https://huggingface.co/datasets/yandex/yambda), flat `listens.parquet`. Its event `timestamp` is expressed in **5-second bins**, not Unix seconds. Optional track–artist and track–album mappings are supported; no genre information is assumed.
 - **Task:** recommend tracks at a global cutoff time; positive means a qualifying listen (`played_ratio_pct > 50`) occurs in the **next day**. A missing listen is *unobserved*, not a confirmed negative.
 - **Candidate generation:** fixed, deterministic union of popular historical tracks, user's recently listened tracks and historical one-hour transitions (counted only in the past 14 days), derived only from data earlier than each cutoff. This is intentionally a relatively simple retrieval baseline; candidate coverage is explicitly measured.
 - **Hand-made features:** activity/popularity and repeated user–item interaction counts in 1/7/30/60-day windows; user/item/pair recency; 30-day track diversity, listen-completion averages, 7-to-30-day trends, and a user–item-popularity-stratum affinity (23 manual features).
@@ -24,7 +24,7 @@ Research prototype for the T-Bank ML selection task (October 2026).
 - The popularity-based candidates cap achievable Recall@10; always inspect candidate coverage.
 - Randomly sampling *users* preserves their full personal histories but estimates aggregate item popularity over that cohort, not the full service.
 - Feature importance selection is a straightforward automatic-selection baseline, not a claim of novel AutoML optimization or an AI agent.
-- This baseline intentionally does not model artists/genres or deep sequential architecture because those aren't in the selected Yambda event file.
+- The basic listens-only baseline omits artist/album relations; the optional metadata mode adds them. Deep sequential architectures and audio embeddings are not implemented.
 
 ## Quick start
 
@@ -91,3 +91,15 @@ These features use extra memory: history is joined to static relations for each 
 - Optional artist/album mappings increase the baseline to **27 manual features** and the automatic bank to **29 generated features**.
 - **Important:** This repository does not yet contain completed empirical results on real Yambda, confidence intervals, a tuned strong collaborative-filtering baseline, or a scalable benchmark of the full 10,000-user dataset. Do not submit synthetic results as research evidence.
 - See [research/AUDIT_2026-10-24.md](research/AUDIT_2026-10-24.md) for verified fixes and remaining work.
+
+
+## 2026-10-25 preflight (do this before the first real run)
+
+The Yambda download is pinned to revision `e8b04458db77e2fb30a24e65f78923fa48b7d297`; the run output records this revision and a SHA-256 fingerprint of the sorted user IDs so experiments can be traced back to the exact sample. The source file is downloaded from Yandex's official dataset, with no locally stored credentials.
+
+1. Open [Actions → Manual tests](https://github.com/voityvaity/T-Lab-task1/actions/workflows/manual-tests.yml) and select **Run workflow**. This uses synthetic data; confirm that `pytest` and the end-to-end demo both pass.
+2. Open [Actions → Manual Yambda research](https://github.com/voityvaity/T-Lab-task1/actions/workflows/manual-yambda-research.yml), choose **100 users, 120 iterations**, and run. This first runs `pytest`, then downloads Yambda, builds history-only snapshots, trains each model and uploads the generated experiment report. Both workflows are opt-in; neither triggers on push.
+3. Download the `yambda-research-report` artifact from the completed run, inspect `REPORT.md`, `metrics.json`, `feature_selection.json` and `run_config.json`. Check candidate coverage and nonzero train positives before interpreting NDCG@10.
+4. **Only if this succeeds:** repeat at 1,000 users. This is computationally demanding; the pandas joins may exceed the RAM or timeout of GitHub-hosted runners. If so, use a higher-memory machine or optimize the joins rather than presenting an incomplete run as a finding.
+
+**Still missing before final submission:** real-data measured scores, strong collaborative baseline (ItemKNN or ALS), feature ablations, variation over random seeds, uncertainty intervals and scale/cost analysis. No claim of complete validation is made merely by merging these source fixes.
