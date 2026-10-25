@@ -10,8 +10,6 @@ import argparse
 import json
 from pathlib import Path
 
-import numpy as np
-
 from .data import BINS_PER_DAY, load_yambda, synthetic_events
 from .experiment import run
 from .relations import load_mappings
