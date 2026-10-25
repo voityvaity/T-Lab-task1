@@ -208,7 +208,7 @@ def test_real_parquet_loader_rejects_missing_columns(tmp_path):
 
 
 def test_feature_columns_unique_when_manual_and_auto_overlap():
-    """Regression: the overlapping 1d and 60d counts previously broke CatBoost."""
+    """Regression: overlapping auto/manual count windows must not create duplicate columns."""
     from tlab.core import MANUAL_COLUMNS, AUTO_COLUMNS
     events = synthetic_events(4, days=80, seed=10)
     cutoff = 70 * BINS_PER_DAY
