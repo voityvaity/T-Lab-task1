@@ -137,11 +137,14 @@ def run(
     seed: int = 42, iterations: int = 200,
     snapshots: int = 4, candidate_limit: int = 200, threads: int = 4,
     mappings: dict[str, pd.DataFrame] | None = None,
+    anchor_timestamp: int | None = None,
 ) -> dict:
     if events.empty:
         raise ValueError("Events are empty")
     users = np.sort(events["uid"].unique())
-    train_cuts, valid_cut, test_cut = global_cutoffs(events, snapshots=snapshots)
+    train_cuts, valid_cut, test_cut = global_cutoffs(
+        events, snapshots=snapshots, anchor_timestamp=anchor_timestamp
+    )
     cohort_sha256 = hashlib.sha256(users.astype("<i8", copy=False).tobytes()).hexdigest()
     manual_columns = MANUAL_COLUMNS + (MANUAL_RELATION_COLUMNS if mappings is not None else [])
     auto_columns = AUTO_COLUMNS + (AUTO_RELATION_COLUMNS if mappings is not None else [])
@@ -302,6 +305,7 @@ def run(
         "users": len(users),
         "cohort_sha256": cohort_sha256,
         "yambda_revision": YAMBDA_REVISION if dataset_mode == "yambda-50m" else None,
+        "cutoff_anchor": int(anchor_timestamp) if anchor_timestamp is not None else int(events["timestamp"].max()),
         "cutoffs": {"train": train_cuts, "validation": valid_cut, "test": test_cut},
         "snapshot_details": details,
         "feature_seconds": round(feature_secs, 3),
@@ -316,6 +320,7 @@ def run(
         "dataset_mode": dataset_mode, "seed": seed, "users": len(users),
         "cohort_sha256": cohort_sha256,
         "yambda_revision": YAMBDA_REVISION if dataset_mode == "yambda-50m" else None,
+        "cutoff_anchor": int(anchor_timestamp) if anchor_timestamp is not None else int(events["timestamp"].max()),
         "iterations": iterations, "snapshots": snapshots, "candidate_limit": candidate_limit,
         "threads": threads, "using_artist_album_metadata": mappings is not None,
         "python": platform.python_version(),
@@ -352,7 +357,9 @@ def main() -> None:
     )
     mappings = load_mappings(args.metadata_dir) if args.metadata_dir is not None else None
     results = run(
-        events, mappings=mappings, dataset_mode="synthetic" if args.demo else "yambda-50m",
+        events, mappings=mappings,
+        anchor_timestamp=events.attrs.get("full_dataset_max_timestamp"),
+        dataset_mode="synthetic" if args.demo else "yambda-50m",
         output=args.output, seed=args.seed, snapshots=args.snapshots,
         candidate_limit=args.candidates, iterations=args.iterations, threads=args.threads,
     )
