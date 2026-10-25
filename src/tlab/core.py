@@ -31,8 +31,8 @@ MANUAL_SPECS = tuple(
     for days in (1, 7, 30, 60)
 )
 AUTO_SPECS = tuple(
-    [FeatureSpec(scope, "count", days) for scope in ("user", "item", "pair") for days in (1, 3, 14, 60)]
-    + [FeatureSpec(scope, "decay", days) for scope in ("user", "item", "pair") for days in (2, 7, 21)]
+    [FeatureSpec(scope, "count", days) for scope in ("user", "item", "pair") for days in (1, 3, 7, 10, 14, 30, 60)]
+    + [FeatureSpec(scope, "decay", days) for scope in ("user", "item", "pair") for days in (2, 5, 7, 10, 21, 30)]
 )
 MANUAL_COLUMNS = [spec.name for spec in MANUAL_SPECS] + [
     "user_recency_days", "item_recency_days", "pair_recency_days",
