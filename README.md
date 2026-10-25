@@ -108,6 +108,16 @@ python -m tlab.experiment --data data/flat/50m/listens.parquet --users 1000 --se
 
 Для следующего исследовательского повтора: сначала [Manual tests](https://github.com/voityvaity/T-Lab-task1/actions/workflows/manual-tests.yml), затем [Manual Yambda research](https://github.com/voityvaity/T-Lab-task1/actions/workflows/manual-yambda-research.yml) с `users=1000`, `iterations=120`, `seed=137`. Это **другая когорта того же тестового дня**; временной сдвиг следует исследовать отдельно. Подбор по уже просмотренному тесту недопустим.
 
+## Заключительный контрольный эксперимент (новый код, результаты ещё не измерены)
+
+[Протокол временной устойчивости и честной абляции ItemKNN](research/TEMPORAL_VALIDATION_PROTOCOL.md) зафиксирован **до** нового прогона. В базовом сравнении остаются исходные 7 моделей; дополнительно обучаются **ручная без ItemKNN** и **автоматическая с ItemKNN**, чтобы проверить, какую часть качества даёт одинаковый collaborative-сигнал. Эти 2 объясняющие модели **не участвуют** в выборе headline model.
+
+Для оценки устойчивости добавлен новый режим `temporal_0_21_42`: три эксперимента над **теми же полными историями пользователей**, но с тестовыми окнами, расположенными на 0, 21 и 42 дня раньше глобального края данных. Во всех трёх случаях сдвигается **весь train/validation/test-план**, все признаки и кандидаты используют только прошлое относительно своего cutoff. Предыдущие цифры NDCG **не меняются** и относятся к старым коммитам.
+
+**Действия:** вручную открыть [Manual tests](https://github.com/voityvaity/T-Lab-task1/actions/workflows/manual-tests.yml), после успешного CI — [Manual Yambda research](https://github.com/voityvaity/T-Lab-task1/actions/workflows/manual-yambda-research.yml); ветка `main`, `evaluation_mode=temporal_0_21_42`, `users=1000`, `seed=42`, `iterations=120`. Один запуск загрузит Yambda один раз и сохранит `TEMPORAL_REPORT.md`, `temporal_robustness.json` и `lag-0/`, `lag-21/`, `lag-42/` с исходными метриками в `yambda-research-report`.
+
+**Текущий статус:** новый режим реализован, но ещё не прошёл удалённые тесты и настоящий эксперимент; никакие результаты для новых временных срезов не заявляются. Цель — проверка устойчивости, а не выбор нового победителя по уже просмотренным тестам. Итоговая работа оценивается преподавателем по четырём указанным критериям, не по лидерборду.
+
 ## Материалы
 
 - [Полный конкурсный отчёт](research/TBANK_TASK1_SUBMISSION.md)
