@@ -91,7 +91,14 @@ def _report(metrics: dict, selector: dict) -> str:
             f"{result['test']['ndcg@10']:.5f} | {result['test']['recall@10']:.5f} | "
             f"{result['train_seconds']:.1f} |"
         )
+    selected_name = metrics["model_selected_by_validation"]
     lines += [
+        "",
+        "## Validation-selected headline model",
+        "",
+        f"Model selected strictly by highest validation NDCG@10: **{selected_name}**.",
+        f"Its test NDCG@10: **{metrics['selected_model_test_metrics']['ndcg@10']:.5f}**.",
+        "Other model test scores are descriptive and must not be used to retune this held-out run.",
         "",
         "## User-level bootstrap uncertainty (held-out test)",
         "",
@@ -296,6 +303,11 @@ def run(
         "test": None, "train_seconds": decay_seconds, "features": decay_only_columns,
     }
 
+    # Select the headline model on validation, *before* looking at test.
+    selected_model_name = sorted(
+        models, key=lambda name: (-models[name]["validation"]["ndcg@10"], name)
+    )[0]
+
     # All selection is now complete; access held-out test metrics only here.
     models["popularity"]["test"] = _evaluate_popularity(test, test_counts)
     models["manual"]["test"] = _evaluate(manual, test, manual_columns, test_counts)
@@ -346,6 +358,8 @@ def run(
             for name in ("candidate_retrieval", "manual_features", "auto_features", "relation_features")
         },
         "models": models,
+        "model_selected_by_validation": selected_model_name,
+        "selected_model_test_metrics": models[selected_model_name]["test"],
     }
     config = {
         "dataset_mode": dataset_mode, "seed": seed, "users": len(users),
