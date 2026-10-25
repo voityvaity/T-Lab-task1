@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import platform
 import time
@@ -12,7 +13,7 @@ import numpy as np
 import pandas as pd
 
 from .core import AUTO_COLUMNS, MANUAL_COLUMNS, global_cutoffs, make_snapshot
-from .data import BINS_PER_DAY, load_yambda, synthetic_events
+from .data import BINS_PER_DAY, YAMBDA_REVISION, load_yambda, synthetic_events
 from .metrics import future_positive_counts, ranking_metrics
 from .relations import (
     AUTO_RELATION_COLUMNS, MANUAL_RELATION_COLUMNS,
@@ -121,6 +122,7 @@ def run(
         raise ValueError("Events are empty")
     users = np.sort(events["uid"].unique())
     train_cuts, valid_cut, test_cut = global_cutoffs(events, snapshots=snapshots)
+    cohort_sha256 = hashlib.sha256(users.astype("<i8", copy=False).tobytes()).hexdigest()
     manual_columns = MANUAL_COLUMNS + (MANUAL_RELATION_COLUMNS if mappings is not None else [])
     auto_columns = AUTO_COLUMNS + (AUTO_RELATION_COLUMNS if mappings is not None else [])
 
@@ -145,6 +147,11 @@ def run(
         details[f"train_{i}"] = detail
     train = pd.concat(train_parts, ignore_index=True)
     del train_parts
+    if train["label"].nunique() < 2:
+        raise ValueError(
+            "The sampled training candidates contain only one label class. "
+            "Increase --users or candidate coverage; do not report this as model quality."
+        )
     start = time.perf_counter()
     valid, details["validation"] = snapshot(valid_cut)
     feature_secs += time.perf_counter() - start
@@ -154,6 +161,11 @@ def run(
 
     val_counts = future_positive_counts(events, valid_cut, BINS_PER_DAY)
     test_counts = future_positive_counts(events, test_cut, BINS_PER_DAY)
+    if val_counts.empty or test_counts.empty:
+        raise ValueError(
+            "Validation/test contains no qualifying future listens; "
+            "increase the sampled user count or revise the held-out horizon."
+        )
 
     # A non-personalized yet realistic historical popularity baseline.
     pop_score_val = valid["item_count_7d"].to_numpy(dtype=float)
@@ -228,6 +240,8 @@ def run(
         "using_artist_album_metadata": mappings is not None,
         "seed": seed,
         "users": len(users),
+        "cohort_sha256": cohort_sha256,
+        "yambda_revision": YAMBDA_REVISION if dataset_mode == "yambda-50m" else None,
         "cutoffs": {"train": train_cuts, "validation": valid_cut, "test": test_cut},
         "snapshot_details": details,
         "feature_seconds": round(feature_secs, 3),
@@ -239,6 +253,8 @@ def run(
     }
     config = {
         "dataset_mode": dataset_mode, "seed": seed, "users": len(users),
+        "cohort_sha256": cohort_sha256,
+        "yambda_revision": YAMBDA_REVISION if dataset_mode == "yambda-50m" else None,
         "iterations": iterations, "snapshots": snapshots, "candidate_limit": candidate_limit,
         "threads": threads, "using_artist_album_metadata": mappings is not None,
         "python": platform.python_version(),
