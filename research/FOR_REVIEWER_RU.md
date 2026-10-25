@@ -35,6 +35,6 @@
 
 ## Как проверить воспроизводимость
 
-Сначала [Manual tests](https://github.com/voityvaity/T-Lab-task1/actions/workflows/manual-tests.yml). Затем [Manual Yambda research](https://github.com/voityvaity/T-Lab-task1/actions/workflows/manual-yambda-research.yml), `users=1000`, `seed=42`, `iterations=120`, `evaluation_mode=temporal_0_21_42`. Все workflow ручные; сначала быстрые тесты и синтетический gate, потом реальная загрузка Yambda. Конфигурация экспериментов, признаки, метрики и временные срезы сохраняются в отдельных JSON и Markdown файлах.
+Одного [Manual Yambda research](https://github.com/voityvaity/T-Lab-task1/actions/workflows/manual-yambda-research.yml) достаточно: `users=1000`, `seed=42`, `iterations=120`, `evaluation_mode=temporal_0_21_42`. Workflow сначала запустит `pytest` и синтетические проверки; отдельный [Manual tests](https://github.com/voityvaity/T-Lab-task1/actions/workflows/manual-tests.yml) необязателен. Все workflow ручные; сначала быстрые тесты и синтетический gate, потом реальная загрузка Yambda. Конфигурация экспериментов, признаки, метрики и временные срезы сохраняются в отдельных JSON и Markdown файлах.
 
 **Цель:** показать преподавателю корректный исследовательский цикл, а не выбирать красивый результат постфактум. По тексту задания победа над бустингом необязательна.
