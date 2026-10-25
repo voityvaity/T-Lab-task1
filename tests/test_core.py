@@ -432,3 +432,110 @@ def test_bootstrap_reports_selected_decay_model_paired_against_manual():
     assert "ndcg@2" in rank2_result["paired_deltas"]["auto_decays_only_minus_manual"]
     assert "recall@2" in rank2_result["models"]["manual"]
     assert "ndcg@10" not in rank2_result["models"]["manual"]
+
+
+def test_lag_moves_all_snapshots_without_changing_spacing():
+    events = synthetic_events(n_users=5, days=128, seed=17)
+    anchor = int(events.timestamp.max())
+    regular = global_cutoffs(events, snapshots=4, anchor_timestamp=anchor)
+    older = global_cutoffs(
+        events, snapshots=4, anchor_timestamp=anchor, test_lag_days=21
+    )
+    oldest = global_cutoffs(
+        events, snapshots=4, anchor_timestamp=anchor, test_lag_days=42
+    )
+    for a, b, c in zip(regular[0] + list(regular[1:]), older[0] + list(older[1:]),
+                       oldest[0] + list(oldest[1:])):
+        assert a - b == 21 * BINS_PER_DAY
+        assert a - c == 42 * BINS_PER_DAY
+    assert older[2] + BINS_PER_DAY < regular[2]
+    assert oldest[2] + BINS_PER_DAY < older[2]
+    with pytest.raises(ValueError, match="nonnegative"):
+        global_cutoffs(events, snapshots=1, anchor_timestamp=anchor, test_lag_days=-1)
+
+
+def test_shifted_test_day_does_not_see_later_events():
+    events = synthetic_events(n_users=5, days=128, seed=7)
+    anchor = int(events.timestamp.max())
+    _, _, cutoff = global_cutoffs(
+        events, snapshots=1, anchor_timestamp=anchor, test_lag_days=21
+    )
+    users = np.sort(events.uid.unique())
+    original, details = make_snapshot(events, cutoff, users, candidate_limit=24)
+    # Artificially change a much later day, keeping the dataset-wide time anchor.
+    late = pd.DataFrame(
+        [(int(users[0]), 500000, cutoff + 4 * BINS_PER_DAY, 100)],
+        columns=events.columns,
+    )
+    appended = pd.concat([events, late], ignore_index=True)
+    revised, details2 = make_snapshot(appended, cutoff, users, candidate_limit=24)
+    pd.testing.assert_frame_equal(original, revised)
+    for k in details:
+        if k != "timings_seconds":
+            assert details[k] == details2[k]
+
+
+def test_matched_itemknn_ablation_keeps_original_validation_selection(tmp_path):
+    from tlab.experiment import run
+    events = synthetic_events(n_users=7, days=115, seed=21)
+    result = run(
+        events, dataset_mode="synthetic", output=tmp_path,
+        seed=21, iterations=5, snapshots=1, candidate_limit=24,
+        test_lag_days=21, threads=2,
+    )
+    assert result["test_lag_days"] == 21
+    models = result["models"]
+    assert models["manual_without_itemknn"]["features"] == [
+        x for x in models["manual"]["features"] if x != "itemknn_score"
+    ]
+    assert models["auto_plus_itemknn"]["features"] == list(dict.fromkeys(
+        models["auto"]["features"] + ["itemknn_score"]
+    ))
+    assert result["model_selected_by_validation"] in (
+        "popularity", "itemknn", "manual", "auto",
+        "manual_plus_auto", "auto_counts_only", "auto_decays_only",
+    )
+    assert len(models) == 9
+    pdeltas = result["bootstrap_uncertainty"]["paired_deltas"]
+    for name in (
+        "auto_plus_itemknn_minus_auto", "manual_minus_manual_without_itemknn",
+        "auto_minus_manual_without_itemknn", "auto_plus_itemknn_minus_manual",
+    ):
+        assert name in pdeltas
+        lo, hi = pdeltas[name]["ndcg@10"]["ci95"]
+        assert lo <= hi
+    report = (tmp_path / "REPORT.md").read_text()
+    assert "Matched ItemKNN ablation" in report
+    assert "lag (days relative" in report
+
+
+def test_temporal_robustness_writes_independent_day_reports(tmp_path):
+    from tlab.robustness import evaluate_time_lags
+    events = synthetic_events(n_users=6, days=110, seed=21)
+    summary = evaluate_time_lags(
+        events, output=tmp_path, dataset_mode="synthetic",
+        seed=21, lags=(0, 21), iterations=5, snapshots=1,
+        candidate_limit=24, threads=2,
+    )
+    entries = summary["evaluations"]
+    assert [entry["test_lag_days"] for entry in entries] == [0, 21]
+    assert entries[0]["test_cutoff"] - entries[1]["test_cutoff"] == (
+        21 * BINS_PER_DAY
+    )
+    assert summary["same_users_across_days"] is True
+    assert entries[0]["cohort_sha256"] == entries[1]["cohort_sha256"]
+    assert (tmp_path / "TEMPORAL_REPORT.md").is_file()
+    assert (tmp_path / "temporal_robustness.json").is_file()
+    for lag in (0, 21):
+        assert (tmp_path / f"lag-{lag}" / "metrics.json").is_file()
+        assert (tmp_path / f"lag-{lag}" / "run_config.json").is_file()
+    with pytest.raises(ValueError, match="unique"):
+        evaluate_time_lags(
+            events, output=tmp_path / "bad", dataset_mode="synthetic",
+            lags=(0, 0), iterations=5, snapshots=1, candidate_limit=24,
+        )
+    with pytest.raises(ValueError, match="two days"):
+        evaluate_time_lags(
+            events, output=tmp_path / "bad2", dataset_mode="synthetic",
+            lags=(0, 1), iterations=5, snapshots=1, candidate_limit=24,
+        )
