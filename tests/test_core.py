@@ -180,3 +180,28 @@ def test_synthetic_run_with_relations(tmp_path):
         feature["name"] for feature in selection["importance_train_only"]
     }
     assert 0 <= result["models"]["auto"]["test"]["recall@10"] <= 1
+
+
+def test_real_parquet_sampler_keeps_full_histories_and_fixed_seed(tmp_path):
+    """Exercise the same Arrow filter used for the downloaded dataset."""
+    from tlab.data import load_yambda
+    source = pd.DataFrame([
+        (u, item, t, ratio)
+        for u in range(1, 5)
+        for item, t, ratio in [(10, 1, 90), (11, 99, 75), (12, 3000, 100)]
+    ], columns=["uid", "item_id", "timestamp", "played_ratio_pct"])
+    path = tmp_path / "listens.parquet"
+    source.to_parquet(path, index=False, engine="pyarrow")
+    selected = load_yambda(path, users=2, seed=42)
+    assert selected["uid"].nunique() == 2
+    assert len(selected) == 6  # three rows per user, without history truncation
+    assert set(selected["timestamp"]) == {1, 99, 3000}
+    pd.testing.assert_frame_equal(selected, load_yambda(path, users=2, seed=42))
+
+
+def test_real_parquet_loader_rejects_missing_columns(tmp_path):
+    from tlab.data import load_yambda
+    path = tmp_path / "broken.parquet"
+    pd.DataFrame({"uid": [1, 1], "item_id": [10, 11]}).to_parquet(path)
+    with pytest.raises(ValueError, match="schema missing columns"):
+        load_yambda(path, users=1, seed=42)
