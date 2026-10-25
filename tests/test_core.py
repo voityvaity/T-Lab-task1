@@ -269,3 +269,24 @@ def test_filtered_relation_joins_equal_simple_reference_for_all_windows():
                 ])
                 expected.append(float(value))
             assert actual[column].tolist() == expected, column
+
+
+def test_candidate_pool_backfills_unique_items_with_historical_popularity():
+    """Pop+repeat source overlap must not silently waste a candidate budget."""
+    events = pd.DataFrame(
+        [
+            (user, item, day * BINS_PER_DAY + item, 80)
+            for user in range(3)
+            for item in range(60)
+            for day in (1, 3)
+        ],
+        columns=["uid", "item_id", "timestamp", "played_ratio_pct"],
+    )
+    cutoff = 5 * BINS_PER_DAY
+    pool = retrieve_candidates(events, cutoff, np.array([0, 1, 2]), candidate_limit=30)
+    assert pool.groupby("uid").size().to_dict() == {0: 30, 1: 30, 2: 30}
+    assert not pool.duplicated(["uid", "item_id"]).any()
+    historical_only = events.loc[events.timestamp < cutoff]
+    pd.testing.assert_frame_equal(
+        pool, retrieve_candidates(historical_only, cutoff, np.array([0, 1, 2]), candidate_limit=30)
+    )
