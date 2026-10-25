@@ -398,3 +398,29 @@ def test_itemknn_is_included_in_shared_snapshot_baselines(tmp_path):
     assert "itemknn" in summary["models"]
     assert "itemknn_score" in summary["models"]["manual"]["features"]
     assert summary["feature_cost_seconds"]["itemknn_features"] >= 0
+
+
+def test_bootstrap_reports_selected_decay_model_paired_against_manual():
+    """Main validation-selected decay-only experiment needs its own paired CI."""
+    from tlab.uncertainty import paired_bootstrap
+
+    pairs = pd.DataFrame(
+        [(1, 10, 1), (1, 11, 0), (2, 10, 0), (2, 12, 1)],
+        columns=["uid", "item_id", "label"],
+    )
+    positives = pd.Series({1: 1, 2: 1})
+    manual = np.array([0.1, 0.9, 0.9, 0.1])
+    decay = np.array([0.9, 0.1, 0.1, 0.9])
+    counts = np.array([0.7, 0.2, 0.1, 0.8])
+    result = paired_bootstrap(
+        pairs,
+        {"manual": manual, "auto_decays_only": decay, "auto_counts_only": counts},
+        positives, n_resamples=200, seed=42,
+    )
+    deltas = result["paired_deltas"]
+    assert "auto_decays_only_minus_manual" in deltas
+    assert "auto_counts_only_minus_manual" in deltas
+    stat = deltas["auto_decays_only_minus_manual"]["ndcg@10"]
+    assert stat["estimate"] == pytest.approx(1.0)
+    assert stat["ci95"][0] == pytest.approx(1.0)
+    assert stat["ci95"][1] == pytest.approx(1.0)
