@@ -12,6 +12,8 @@ import pandas as pd
 
 BINS_PER_DAY = 24 * 60 * 60 // 5
 POSITIVE_PLAYED_RATIO_PCT = 50
+# Dataset revision pinned for reproducibility (also contains both mapping tables).
+YAMBDA_REVISION = "e8b04458db77e2fb30a24e65f78923fa48b7d297"
 
 
 def is_positive_listen(played_ratio_pct: pd.Series) -> pd.Series:
@@ -39,6 +41,10 @@ def load_yambda(path: str | Path, users: int = 100, seed: int = 42) -> pd.DataFr
     del uid_array, unique_ids
 
     cols = ["uid", "item_id", "timestamp", "played_ratio_pct"]
+    schema_fields = set(pq.read_schema(path).names)
+    missing = set(cols) - schema_fields
+    if missing:
+        raise ValueError(f"Yambda listens schema missing columns: {sorted(missing)}")
     table = ds.dataset(str(path), format="parquet").to_table(
         columns=cols, filter=ds.field("uid").isin(chosen.tolist())
     )
@@ -77,6 +83,7 @@ def main() -> None:
     path = hf_hub_download(
         repo_id="yandex/yambda",
         repo_type="dataset",
+        revision=YAMBDA_REVISION,
         filename="flat/50m/listens.parquet",
         local_dir=str(args.output),
     )
@@ -86,6 +93,7 @@ def main() -> None:
             mapping_path = hf_hub_download(
                 repo_id="yandex/yambda",
                 repo_type="dataset",
+                revision=YAMBDA_REVISION,
                 filename=f"{name}_item_mapping.parquet",
                 local_dir=str(args.output),
             )
