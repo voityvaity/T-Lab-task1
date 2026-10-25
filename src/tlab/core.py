@@ -44,11 +44,20 @@ MANUAL_COLUMNS = [spec.name for spec in MANUAL_SPECS] + [
 AUTO_COLUMNS = [spec.name for spec in AUTO_SPECS]
 
 
-def global_cutoffs(events: pd.DataFrame, snapshots: int = 4) -> tuple[list[int], int, int]:
-    """Disjoint 1-day labels: train cutoffs 3 days apart, validation, final test."""
+def global_cutoffs(
+    events: pd.DataFrame, snapshots: int = 4, anchor_timestamp: int | None = None
+) -> tuple[list[int], int, int]:
+    """Disjoint 1-day labels at the same globally anchored event horizon."""
     if events.empty:
         raise ValueError("Empty events")
-    test = int(events["timestamp"].max()) - BINS_PER_DAY
+    if snapshots < 1:
+        raise ValueError("snapshots must be positive")
+    sampled_max = int(events["timestamp"].max())
+    if anchor_timestamp is None:
+        anchor_timestamp = sampled_max
+    if anchor_timestamp < sampled_max:
+        raise ValueError("Global anchor cannot precede any sampled event")
+    test = int(anchor_timestamp) - BINS_PER_DAY
     valid = test - 2 * BINS_PER_DAY
     train = [valid - (3 * i) * BINS_PER_DAY for i in range(snapshots, 0, -1)]
     if min(train) - 60 * BINS_PER_DAY < int(events["timestamp"].min()):
