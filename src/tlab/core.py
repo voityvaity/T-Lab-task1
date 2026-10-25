@@ -206,7 +206,12 @@ def make_snapshot(
     start = perf_counter()
     auto = add_features(events, cand, cutoff, AUTO_SPECS, manual_extras=False)
     auto_time = perf_counter() - start
-    feature_frame = pd.concat([manual, auto[AUTO_COLUMNS]], axis=1)
+    # Some automatically generated count windows are identical to manual ones.
+    # Keep exactly one copy; pandas duplicate columns break CatBoost feature names.
+    new_auto_columns = [name for name in AUTO_COLUMNS if name not in manual.columns]
+    feature_frame = pd.concat([manual, auto[new_auto_columns]], axis=1)
+    if not feature_frame.columns.is_unique:
+        raise ValueError("Feature generator emitted duplicate column names")
     future = events.loc[
         (events["timestamp"] >= cutoff)
         & (events["timestamp"] < cutoff + BINS_PER_DAY)
