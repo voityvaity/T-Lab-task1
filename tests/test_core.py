@@ -216,7 +216,7 @@ def test_feature_columns_unique_when_manual_and_auto_overlap():
     assert result.columns.is_unique
     for column in set(MANUAL_COLUMNS + AUTO_COLUMNS):
         assert list(result.columns).count(column) == 1
-    assert len(set(MANUAL_COLUMNS).intersection(AUTO_COLUMNS)) == 6
+    assert len(set(MANUAL_COLUMNS).intersection(AUTO_COLUMNS)) == 12
 
 
 def test_filtered_relation_joins_equal_simple_reference_for_all_windows():
