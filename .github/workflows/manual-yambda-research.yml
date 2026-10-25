@@ -9,6 +9,12 @@ on:
         default: "100"
         type: choice
         options: ["100", "1000"]
+      seed:
+        description: "Random full-user cohort for independent repeat"
+        required: true
+        default: "42"
+        type: choice
+        options: ["42", "137", "2026"]
       iterations:
         description: "CatBoost iterations per model"
         required: true
@@ -46,8 +52,9 @@ jobs:
         env:
           USERS: ${{ inputs.users }}
           ITERATIONS: ${{ inputs.iterations }}
+          SEED: ${{ inputs.seed }}
         run: |
-          /usr/bin/time -v python -m tlab.experiment --data data/flat/50m/listens.parquet --users "$USERS" --iterations "$ITERATIONS" --threads 4 --metadata-dir data --output results/yambda
+          /usr/bin/time -v python -m tlab.experiment --data data/flat/50m/listens.parquet --users "$USERS" --seed "$SEED" --iterations "$ITERATIONS" --threads 4 --metadata-dir data --output results/yambda
       - name: Upload measured report (never raw data)
         if: always()
         uses: actions/upload-artifact@v4
