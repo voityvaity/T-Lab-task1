@@ -77,10 +77,11 @@ def retrieve_candidates(
     pop_budget = candidate_limit // 3
     recent_budget = candidate_limit // 3
     transition_budget = candidate_limit - pop_budget - recent_budget
-    global_items = (
+    global_items_all = (
         history.groupby("item_id").size().sort_values(ascending=False, kind="mergesort")
-        .index[:pop_budget].tolist()
+        .index[:candidate_limit].tolist()
     )
+    global_items = global_items_all[:pop_budget]
     recent = (
         history.sort_values(["uid", "timestamp", "item_id"], ascending=[True, False, True], kind="mergesort")
         .drop_duplicates(["uid", "item_id"])
@@ -123,6 +124,8 @@ def retrieve_candidates(
             global_items[:pop_budget]
             + user_recent[:recent_budget]
             + suggestions[:transition_budget]
+            # Recover capacity lost to duplicated sources, using past popularity.
+            + global_items_all
         ))
         rows.extend((int(uid), int(item)) for item in ordered[:candidate_limit])
     return pd.DataFrame(rows, columns=["uid", "item_id"])
