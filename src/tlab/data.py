@@ -21,6 +21,39 @@ def is_positive_listen(played_ratio_pct: pd.Series) -> pd.Series:
     return played_ratio_pct > POSITIVE_PLAYED_RATIO_PCT
 
 
+def global_last_timestamp(path: str | Path) -> int:
+    """Find last event time in the *full* Yambda source, independently of user sampling.
+
+    Fast path uses row-group Parquet statistics. The streaming fallback is used
+    if any group does not expose the timestamp maximum.
+    """
+    import pyarrow.parquet as pq
+
+    parquet = pq.ParquetFile(path)
+    schema_names = parquet.schema_arrow.names
+    if "timestamp" not in schema_names:
+        raise ValueError("Yambda listens schema missing column: timestamp")
+    column_index = schema_names.index("timestamp")
+    group_maxima = []
+    for i in range(parquet.metadata.num_row_groups):
+        stats = parquet.metadata.row_group(i).column(column_index).statistics
+        if stats is None or not stats.has_min_max or stats.max is None:
+            break
+        group_maxima.append(int(stats.max))
+    if len(group_maxima) == parquet.metadata.num_row_groups and group_maxima:
+        return max(group_maxima)
+
+    # Streaming avoids materializing the full timestamp column in memory.
+    maximum = None
+    for batch in parquet.iter_batches(columns=["timestamp"], batch_size=1_000_000):
+        if batch.num_rows:
+            current = int(batch.column(0).to_numpy().max())
+            maximum = current if maximum is None else max(maximum, current)
+    if maximum is None:
+        raise ValueError("Empty Yambda parquet timestamp column")
+    return maximum
+
+
 def load_yambda(path: str | Path, users: int = 100, seed: int = 42) -> pd.DataFrame:
     """Deterministically sample user IDs, then fetch *all* their event rows."""
     import pyarrow.dataset as ds
@@ -52,7 +85,11 @@ def load_yambda(path: str | Path, users: int = 100, seed: int = 42) -> pd.DataFr
     out["played_ratio_pct"] = out["played_ratio_pct"].fillna(0).astype("float32")
     if out.empty:
         raise ValueError("No rows loaded for selected users.")
-    return out.sort_values(["uid", "timestamp", "item_id"], kind="mergesort").reset_index(drop=True)
+    result = out.sort_values(
+        ["uid", "timestamp", "item_id"], kind="mergesort"
+    ).reset_index(drop=True)
+    result.attrs["full_dataset_max_timestamp"] = global_last_timestamp(path)
+    return result
 
 
 def synthetic_events(n_users: int = 20, days: int = 80, seed: int = 42) -> pd.DataFrame:
