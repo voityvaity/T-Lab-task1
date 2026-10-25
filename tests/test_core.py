@@ -358,3 +358,43 @@ def test_binary_diagnostics_auc_ties_and_logloss_reference():
     assert raw["candidate_roc_auc"] == pytest.approx(0.875)
     all_positive = binary_diagnostics(np.ones(3), np.array([0.5, 0.6, 0.7]), probabilities=True)
     assert all_positive["candidate_roc_auc"] is None
+
+
+def test_itemknn_similarity_is_history_only_and_nontrivial():
+    from tlab.itemknn import itemknn_scores
+    cutoff = 70 * BINS_PER_DAY
+    # Different co-listening users support a genuine item co-occurrence.
+    rows = [
+        (1, 1, cutoff - 100, 70), (1, 2, cutoff - 99, 90),
+        (2, 1, cutoff - 100, 70), (2, 2, cutoff - 98, 90),
+        (3, 1, cutoff - 100, 70), (3, 3, cutoff - 98, 90),
+        (4, 1, cutoff - 100, 70), (4, 3, cutoff - 99, 90),
+        (5, 1, cutoff - 1, 80),
+    ]
+    events = pd.DataFrame(
+        rows, columns=["uid", "item_id", "timestamp", "played_ratio_pct"]
+    )
+    candidates = pd.DataFrame(
+        [(5, 2), (5, 3), (5, 99)], columns=["uid", "item_id"]
+    )
+    scores = itemknn_scores(events, cutoff, candidates)
+    assert scores[0] > 0 and scores[1] > 0
+    assert scores[2] == 0.0
+    future = pd.DataFrame(
+        [(3, 2, cutoff + 100, 100)],
+        columns=events.columns,
+    )
+    augmented = pd.concat([events, future], ignore_index=True)
+    np.testing.assert_array_equal(scores, itemknn_scores(augmented, cutoff, candidates))
+
+
+def test_itemknn_is_included_in_shared_snapshot_baselines(tmp_path):
+    from tlab.experiment import run
+    events = synthetic_events(6, days=80, seed=21)
+    summary = run(
+        events, dataset_mode="synthetic", output=tmp_path,
+        seed=21, iterations=5, snapshots=1, candidate_limit=24, threads=2,
+    )
+    assert "itemknn" in summary["models"]
+    assert "itemknn_score" in summary["models"]["manual"]["features"]
+    assert summary["feature_cost_seconds"]["itemknn_features"] >= 0
