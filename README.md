@@ -97,8 +97,8 @@ These features use extra memory: history is joined to static relations for each 
 
 The Yambda download is pinned to revision `e8b04458db77e2fb30a24e65f78923fa48b7d297`; the run output records this revision and a SHA-256 fingerprint of the sorted user IDs so experiments can be traced back to the exact sample. The source file is downloaded from Yandex's official dataset, with no locally stored credentials.
 
-1. Open [Actions → Manual tests](https://github.com/voityvaity/T-Lab-task1/actions/workflows/manual-tests.yml) and select **Run workflow**. This uses synthetic data; confirm that `pytest` and the end-to-end demo both pass.
-2. Open [Actions → Manual Yambda research](https://github.com/voityvaity/T-Lab-task1/actions/workflows/manual-yambda-research.yml), choose **100 users, 120 iterations**, and run. This first runs `pytest`, then downloads Yambda, builds history-only snapshots, trains each model and uploads the generated experiment report. Both workflows are opt-in; neither triggers on push.
+1. Open [Actions → Manual Yambda research](https://github.com/voityvaity/T-Lab-task1/actions/workflows/manual-yambda-research.yml), choose **100 users, 120 iterations**, and click **Run workflow**. It checks `pytest` and executes a synthetic end-to-end smoke **before** downloading Yambda. Both gate checks must succeed to proceed with the real dataset. No push trigger exists.
+2. Wait for downloading Yambda, feature engineering and CatBoost training to finish. The workflow uploads the measured research report only after reaching the experiment.
 3. Download the `yambda-research-report` artifact from the completed run, inspect `REPORT.md`, `metrics.json`, `feature_selection.json` and `run_config.json`. Check candidate coverage and nonzero train positives before interpreting NDCG@10.
 4. **Only if this succeeds:** repeat at 1,000 users. This is computationally demanding; the pandas joins may exceed the RAM or timeout of GitHub-hosted runners. If so, use a higher-memory machine or optimize the joins rather than presenting an incomplete run as a finding.
 
