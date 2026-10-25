@@ -15,6 +15,8 @@ This memo tracks the **exact implementation and claims** checked before real Yam
 
 ## Fixes after the 2026-10-24 review
 
+0. **Critical CatBoost blocker:** Manual 1d/60d count features intersected with auto-generated count features in six names. `pd.concat` silently duplicated columns, which can break CatBoost's named feature handling. Fixed `make_snapshot` to reuse the manual copy of any duplicate and append only unseen generated columns; added explicit uniqueness assertion and regression test. Isolated local pandas reproducer confirmed the six duplicates and the fix.
+
 1. Corrected a flaky future-data-invariance test: `make_snapshot` records nondeterministic wall-clock timings, so its regression test must compare stable data/diagnostics separately from timing values.
 2. Pinned Yambda download to revision `e8b04458db77e2fb30a24e65f78923fa48b7d297` for stable inputs and added required-Parquet-schema validation.
 3. Recorded the source revision and SHA256 fingerprint of **sorted user IDs** in output. Actual sampled ID lists are not committed.
