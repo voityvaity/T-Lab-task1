@@ -7,7 +7,7 @@ This audit rechecks the original automated temporal feature-search proposal agai
 [their baseline guide](https://huggingface.co/datasets/yandex/yambda/blob/main/benchmarks/README.md),
 [Featuretools' cutoff-time semantics](https://docs.featuretools.com/en/stable/getting_started/handling_time.html),
 [Time to Split (RecSys 2025)](https://doi.org/10.1145/3705328.3748164), and
-[RecSys 2026 offline-evaluation validity research](https://doi.org/10.1145/3773078.3831818).
+[RecSys 2025 sampling-bias study](https://doi.org/10.1145/3705328.3748086).
 
 Prior **successful** GitHub Actions run [40178980085](https://github.com/voityvaity/T-Lab-task1/actions/runs/40178980085)
 was at commit `b05429449738380d0ad5750307b142ed85914a01` on the
@@ -20,9 +20,11 @@ The old protocol retrieved 606/2878 test future positives = 21.06% coverage.
 That is a retrieval-stage recall ceiling: stronger reranking alone cannot fix it.
 The old implementation consumed roughly 2.25 GiB peak RAM during the experiment.
 
-**No CI job has yet validated the changes in this audit**. Do not claim
-the current HEAD has passed tests or the old results transfer to it.
-No model results for this new commit exist at the time of writing.
+**Historical note:** when this earlier audit was written, CI had not validated
+its code changes. Subsequent runs [40181074981](https://github.com/voityvaity/T-Lab-task1/actions/runs/40181074981)
+and [40182238147](https://github.com/voityvaity/T-Lab-task1/actions/runs/40182238147)
+did validate the implementation at SHA `b14c04b` / documentation-only SHA
+`239d8ac`. Later reporting/bootstrap improvements require their own test run.
 
 ## Corrections made in this audit
 
