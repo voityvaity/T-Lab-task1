@@ -125,7 +125,11 @@ def test_snapshot_is_invariant_to_any_observations_after_target_window():
     augmented = pd.concat([events, new_future], ignore_index=True)
     frame2, details2 = make_snapshot(augmented, cutoff, user_ids, candidate_limit=24)
     pd.testing.assert_frame_equal(frame, frame2)
-    assert details == details2
+    # CPU wall clock values naturally differ and are not model outputs.
+    for key in details:
+        if key != "timings_seconds":
+            assert details[key] == details2[key]
+    assert set(details["timings_seconds"]) == set(details2["timings_seconds"])
 
 
 def test_relations_count_all_artists_without_future_leakage():
